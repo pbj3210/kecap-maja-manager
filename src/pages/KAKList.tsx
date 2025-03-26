@@ -37,8 +37,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, FileDown } from "lucide-react";
+import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, FileDown, SortAsc, SortDesc, ArrowDown, ArrowUp } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { saveAs } from 'file-saver';
+import { jsPDF } from 'jspdf';
 
 // Format currency
 const formatCurrency = (amount: number) => {
@@ -60,19 +62,28 @@ const formatDate = (dateString: string) => {
   });
 };
 
+type SortColumn = 'jenisKAK' | 'komponenOutput' | 'tanggalPengajuan' | 'paguAnggaran' | 'createdBy.name';
+type SortDirection = 'asc' | 'desc';
+
 const KAKList = () => {
-  const { kaks, deleteKAK, duplicateKAK } = useKAK();
+  const { kaks, loading, deleteKAK, duplicateKAK, fetchKAKs } = useKAK();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredKAKs, setFilteredKAKs] = useState(kaks);
   const [filterType, setFilterType] = useState("all");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [kakToDelete, setKakToDelete] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('tanggalPengajuan');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  
+  useEffect(() => {
+    // Refresh data from the database
+    fetchKAKs();
+  }, []);
 
   useEffect(() => {
-    // Filter KAKs based on search query and filter type
-    let filtered = kaks;
+    // Filter and sort KAKs based on search query, filter type, and sort options
+    let filtered = [...kaks];
     
     // Filter by type if not "all"
     if (filterType !== "all") {
@@ -85,64 +96,177 @@ const KAKList = () => {
       filtered = filtered.filter(kak =>
         kak.jenisKAK.toLowerCase().includes(query) ||
         kak.programPembebanan.toLowerCase().includes(query) ||
-        kak.komponenOutput.toLowerCase().includes(query)
+        kak.komponenOutput.toLowerCase().includes(query) ||
+        kak.createdBy.name.toLowerCase().includes(query)
       );
     }
     
-    setFilteredKAKs(filtered);
-  }, [kaks, searchQuery, filterType]);
-
-  useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
+    // Sort the data
+    filtered.sort((a, b) => {
+      let valueA, valueB;
+      
+      // Handle nested properties like createdBy.name
+      if (sortColumn === 'createdBy.name') {
+        valueA = a.createdBy.name;
+        valueB = b.createdBy.name;
+      } else if (sortColumn === 'tanggalPengajuan') {
+        valueA = new Date(a[sortColumn]).getTime();
+        valueB = new Date(b[sortColumn]).getTime();
+      } else {
+        valueA = a[sortColumn];
+        valueB = b[sortColumn];
+      }
+      
+      // Compare values
+      if (typeof valueA === 'string' && typeof valueB === 'string') {
+        return sortDirection === 'asc' 
+          ? valueA.localeCompare(valueB) 
+          : valueB.localeCompare(valueA);
+      } else {
+        return sortDirection === 'asc' 
+          ? (valueA > valueB ? 1 : -1) 
+          : (valueA < valueB ? 1 : -1);
+      }
+    });
     
-    return () => clearTimeout(timer);
-  }, []);
+    setFilteredKAKs(filtered);
+  }, [kaks, searchQuery, filterType, sortColumn, sortDirection]);
 
   // Get unique KAK types for filter
   const uniqueKAKTypes = Array.from(new Set(kaks.map(kak => kak.jenisKAK)));
+
+  // Sort handling
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column, set default direction to ascending
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Render sort indicator
+  const renderSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ArrowDown className="h-4 w-4 opacity-30" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ArrowUp className="h-4 w-4 text-orange-500" /> 
+      : <ArrowDown className="h-4 w-4 text-orange-500" />;
+  };
 
   const confirmDelete = (id: string) => {
     setKakToDelete(id);
     setIsDeleteDialogOpen(true);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (kakToDelete) {
-      deleteKAK(kakToDelete);
-      setIsDeleteDialogOpen(false);
-      setKakToDelete(null);
+      try {
+        await deleteKAK(kakToDelete);
+        setIsDeleteDialogOpen(false);
+        setKakToDelete(null);
+      } catch (error) {
+        console.error("Error deleting KAK:", error);
+      }
     }
   };
 
-  const handleDuplicate = (id: string) => {
-    duplicateKAK(id);
-    toast({
-      title: "KAK berhasil diduplikasi",
-      description: "Salinan KAK telah dibuat",
-    });
+  const handleDuplicate = async (id: string) => {
+    try {
+      await duplicateKAK(id);
+    } catch (error) {
+      console.error("Error duplicating KAK:", error);
+    }
   };
 
   const handleDownload = (kak: any) => {
-    // In a real implementation, this would generate a proper document
-    // For now, just show a toast
-    toast({
-      title: "Dokumen sedang diunduh",
-      description: "KAK sedang diproses untuk diunduh",
-    });
-
-    // Simulate download delay
-    setTimeout(() => {
+    try {
+      // Create a new PDF document
+      const doc = new jsPDF();
+      
+      // Set font size and add title
+      doc.setFontSize(16);
+      doc.text("KERANGKA ACUAN KERJA (KAK)", 105, 20, { align: 'center' });
+      
+      // Add content
+      doc.setFontSize(12);
+      doc.text(`Jenis KAK: ${kak.jenisKAK}`, 20, 40);
+      doc.text(`Program Pembebanan: ${kak.programPembebanan}`, 20, 50);
+      doc.text(`Kegiatan: ${kak.kegiatan}`, 20, 60);
+      doc.text(`Komponen Output: ${kak.komponenOutput}`, 20, 70);
+      doc.text(`Sub Komponen: ${kak.subKomponen}`, 20, 80);
+      doc.text(`Akun Belanja: ${kak.akunBelanja}`, 20, 90);
+      doc.text(`Pagu Anggaran: ${formatCurrency(kak.paguAnggaran)}`, 20, 100);
+      doc.text(`Diajukan oleh: ${kak.createdBy.name}`, 20, 110);
+      doc.text(`Tanggal Pengajuan: ${formatDate(kak.tanggalPengajuan)}`, 20, 120);
+      doc.text(`Tanggal Mulai: ${formatDate(kak.tanggalMulai)}`, 20, 130);
+      doc.text(`Tanggal Akhir: ${formatDate(kak.tanggalAkhir)}`, 20, 140);
+      
+      // Add items table
+      let yPos = 160;
+      doc.text("RINCIAN KEGIATAN:", 20, yPos);
+      yPos += 10;
+      
+      // Table headers
+      doc.setFontSize(10);
+      doc.text("No", 20, yPos);
+      doc.text("Nama Item", 35, yPos);
+      doc.text("Volume", 110, yPos);
+      doc.text("Satuan", 130, yPos);
+      doc.text("Harga Satuan", 150, yPos);
+      doc.text("Subtotal", 180, yPos);
+      
+      yPos += 5;
+      doc.line(20, yPos, 190, yPos); // Draw a line
+      yPos += 5;
+      
+      // Table rows
+      kak.items.forEach((item: any, index: number) => {
+        // Add page if needed
+        if (yPos > 270) {
+          doc.addPage();
+          yPos = 20;
+        }
+        
+        doc.text(`${index + 1}`, 20, yPos);
+        doc.text(item.nama, 35, yPos);
+        doc.text(item.volume.toString(), 110, yPos);
+        doc.text(item.satuan, 130, yPos);
+        doc.text(formatCurrency(item.hargaSatuan), 150, yPos);
+        doc.text(formatCurrency(item.subtotal), 180, yPos);
+        
+        yPos += 10;
+      });
+      
+      yPos += 5;
+      doc.line(20, yPos, 190, yPos); // Draw a line
+      yPos += 10;
+      
+      // Total
+      doc.setFontSize(12);
+      doc.text(`Total: ${formatCurrency(kak.paguDigunakan || kak.items.reduce((sum: number, item: any) => sum + item.subtotal, 0))}`, 150, yPos);
+      
+      // Save the PDF
+      doc.save(`KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.pdf`);
+      
       toast({
         title: "Dokumen berhasil diunduh",
-        description: "KAK telah berhasil diunduh",
+        description: "KAK telah berhasil diunduh sebagai file PDF",
       });
-    }, 2000);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Gagal mengunduh dokumen",
+        description: "Terjadi kesalahan saat membuat file PDF",
+        variant: "destructive",
+      });
+    }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
         <div className="text-center">
@@ -160,7 +284,7 @@ const KAKList = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Rekap Kerangka Acuan Kerja</h1>
-        <Button asChild>
+        <Button asChild className="bg-orange-500 hover:bg-orange-600">
           <Link to="/kak/new">
             <Plus className="mr-2 h-4 w-4" />
             Buat KAK Baru
@@ -213,7 +337,7 @@ const KAKList = () => {
               <p className="text-muted-foreground mb-6">
                 Belum ada KAK yang ditambahkan atau sesuai dengan filter yang dipilih
               </p>
-              <Button asChild>
+              <Button asChild className="bg-orange-500 hover:bg-orange-600">
                 <Link to="/kak/new">
                   <Plus className="mr-2 h-4 w-4" />
                   Buat KAK Baru
@@ -225,11 +349,31 @@ const KAKList = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Jenis KAK</TableHead>
-                    <TableHead>Komponen Output</TableHead>
-                    <TableHead>Tanggal Pengajuan</TableHead>
-                    <TableHead>Pagu Anggaran</TableHead>
-                    <TableHead>Pembuat</TableHead>
+                    <TableHead onClick={() => handleSort('jenisKAK')} className="cursor-pointer">
+                      <div className="flex items-center">
+                        Jenis KAK {renderSortIcon('jenisKAK')}
+                      </div>
+                    </TableHead>
+                    <TableHead onClick={() => handleSort('komponenOutput')} className="cursor-pointer">
+                      <div className="flex items-center">
+                        Komponen Output {renderSortIcon('komponenOutput')}
+                      </div>
+                    </TableHead>
+                    <TableHead onClick={() => handleSort('tanggalPengajuan')} className="cursor-pointer">
+                      <div className="flex items-center">
+                        Tanggal Pengajuan {renderSortIcon('tanggalPengajuan')}
+                      </div>
+                    </TableHead>
+                    <TableHead onClick={() => handleSort('paguAnggaran')} className="cursor-pointer">
+                      <div className="flex items-center">
+                        Pagu Anggaran {renderSortIcon('paguAnggaran')}
+                      </div>
+                    </TableHead>
+                    <TableHead onClick={() => handleSort('createdBy.name')} className="cursor-pointer">
+                      <div className="flex items-center">
+                        Pembuat {renderSortIcon('createdBy.name')}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -266,7 +410,7 @@ const KAKList = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDownload(kak)}
-                              className="text-primary"
+                              className="text-orange-600"
                             >
                               <Download className="mr-2 h-4 w-4" />
                               <span>Download</span>

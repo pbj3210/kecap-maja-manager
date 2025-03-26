@@ -32,7 +32,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Trash2, PlusCircle, Calendar as CalendarIcon } from "lucide-react";
+import { Trash2, PlusCircle, Calendar as CalendarIcon, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -284,6 +284,7 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
     subKomponen: initialData?.subKomponen || "",
     akunBelanja: initialData?.akunBelanja || "",
     paguAnggaran: initialData?.paguAnggaran || 0,
+    paguDigunakan: initialData?.paguDigunakan || 0,
     tanggalMulai: initialData?.tanggalMulai || "",
     tanggalAkhir: initialData?.tanggalAkhir || "",
     tanggalPengajuan: initialData?.tanggalPengajuan || ""
@@ -296,11 +297,25 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Effect to calculate total budget based on items
+  // Effect to calculate total of items
   useEffect(() => {
-    const totalBudget = items.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-    setFormData(prev => ({ ...prev, paguAnggaran: totalBudget }));
-  }, [items]);
+    const totalItems = items.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+    setFormData(prev => ({ ...prev, paguDigunakan: totalItems }));
+    
+    // Validate pagu anggaran against pagu digunakan
+    if (formData.paguAnggaran > 0 && totalItems > formData.paguAnggaran) {
+      setErrors(prev => ({
+        ...prev,
+        paguAnggaran: "Pagu Anggaran harus lebih besar dari total yang digunakan"
+      }));
+    } else if (errors.paguAnggaran && !(totalItems > formData.paguAnggaran)) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.paguAnggaran;
+        return newErrors;
+      });
+    }
+  }, [items, formData.paguAnggaran]);
 
   // Handle date selection
   const handleDateChange = (field: "tanggalMulai" | "tanggalAkhir" | "tanggalPengajuan", date: Date) => {
@@ -379,6 +394,22 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
         delete newErrors[field];
         return newErrors;
       });
+    }
+    
+    // Special validation for pagu anggaran
+    if (field === "paguAnggaran") {
+      const paguValue = typeof value === 'string' ? parseFloat(value) : value;
+      if (paguValue <= 0) {
+        setErrors(prev => ({
+          ...prev,
+          paguAnggaran: "Pagu Anggaran harus lebih dari 0"
+        }));
+      } else if (paguValue < formData.paguDigunakan) {
+        setErrors(prev => ({
+          ...prev,
+          paguAnggaran: "Pagu Anggaran harus lebih besar dari total yang digunakan"
+        }));
+      }
     }
     
     // Special handling for interdependent fields
@@ -472,6 +503,10 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
     if (!formData.komponenOutput) newErrors.komponenOutput = "Komponen output harus dipilih";
     if (!formData.subKomponen) newErrors.subKomponen = "Sub komponen harus dipilih";
     if (!formData.akunBelanja) newErrors.akunBelanja = "Akun belanja harus dipilih";
+    if (!formData.paguAnggaran || formData.paguAnggaran <= 0) 
+      newErrors.paguAnggaran = "Pagu anggaran harus diisi dan lebih dari 0";
+    if (formData.paguAnggaran < formData.paguDigunakan)
+      newErrors.paguAnggaran = "Pagu anggaran harus lebih besar dari total yang digunakan";
     if (!formData.tanggalMulai) newErrors.tanggalMulai = "Tanggal mulai harus diisi";
     if (!formData.tanggalAkhir) newErrors.tanggalAkhir = "Tanggal akhir harus diisi";
     if (!formData.tanggalPengajuan) newErrors.tanggalPengajuan = "Tanggal pengajuan harus diisi";
@@ -762,6 +797,26 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
               )}
             </div>
           )}
+
+          {/* Pagu Anggaran (Manual Input) */}
+          <div className="space-y-2">
+            <Label htmlFor="paguAnggaran">Pagu Anggaran (Rp)</Label>
+            <Input
+              id="paguAnggaran"
+              type="number"
+              value={formData.paguAnggaran}
+              onChange={(e) => handleChange("paguAnggaran", e.target.value)}
+              min="0"
+              step="1"
+              placeholder="0"
+              className={errors.paguAnggaran ? "border-destructive" : ""}
+            />
+            {errors.paguAnggaran && (
+              <p className="text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="h-4 w-4" /> {errors.paguAnggaran}
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -924,20 +979,48 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
             </Button>
           </div>
 
-          {/* Pagu Anggaran (Read-only) */}
+          {/* Total Pagu Terpakai (Read-only) */}
           <div className="space-y-2 pt-4 border-t">
-            <Label htmlFor="paguAnggaran">Total Pagu Anggaran</Label>
+            <Label htmlFor="paguDigunakan">Total Anggaran yang Digunakan</Label>
             <Input
-              id="paguAnggaran"
+              id="paguDigunakan"
               value={new Intl.NumberFormat('id-ID', {
                 style: 'currency',
                 currency: 'IDR',
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0,
-              }).format(formData.paguAnggaran)}
+              }).format(formData.paguDigunakan)}
               readOnly
               className="bg-muted text-lg font-semibold"
             />
+            {formData.paguAnggaran > 0 && (
+              <div className={cn(
+                "text-sm mt-2 flex items-center gap-1",
+                formData.paguDigunakan > formData.paguAnggaran ? "text-destructive" : "text-green-600"
+              )}>
+                {formData.paguDigunakan > formData.paguAnggaran ? (
+                  <>
+                    <AlertCircle className="h-4 w-4" /> 
+                    Melebihi pagu anggaran sebesar {new Intl.NumberFormat('id-ID', {
+                      style: 'currency',
+                      currency: 'IDR',
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(formData.paguDigunakan - formData.paguAnggaran)}
+                  </>
+                ) : (
+                  <>
+                    <span className="i-lucide-check-circle h-4 w-4" />
+                    Sisa pagu anggaran: {new Intl.NumberFormat('id-ID', {
+                      style: 'currency',
+                      currency: 'IDR',
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    }).format(formData.paguAnggaran - formData.paguDigunakan)}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -985,7 +1068,9 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
                 </PopoverContent>
               </Popover>
               {errors.tanggalPengajuan && (
-                <p className="text-sm text-destructive">{errors.tanggalPengajuan}</p>
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" /> {errors.tanggalPengajuan}
+                </p>
               )}
             </div>
 
@@ -1022,7 +1107,9 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
                 </PopoverContent>
               </Popover>
               {errors.tanggalMulai && (
-                <p className="text-sm text-destructive">{errors.tanggalMulai}</p>
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" /> {errors.tanggalMulai}
+                </p>
               )}
             </div>
 
@@ -1059,7 +1146,9 @@ const KAKFormComponent: React.FC<KAKFormComponentProps> = ({ initialData, onSave
                 </PopoverContent>
               </Popover>
               {errors.tanggalAkhir && (
-                <p className="text-sm text-destructive">{errors.tanggalAkhir}</p>
+                <p className="text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" /> {errors.tanggalAkhir}
+                </p>
               )}
             </div>
           </div>

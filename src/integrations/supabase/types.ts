@@ -9,7 +9,107 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      kak: {
+        Row: {
+          akun_belanja: string
+          created_at: string
+          created_by_name: string
+          created_by_role: string
+          id: string
+          jenis_kak: string
+          kegiatan: string
+          komponen_output: string
+          pagu_anggaran: number
+          pagu_digunakan: number
+          program_pembebanan: string
+          rincian_output: string
+          sub_komponen: string
+          tanggal_akhir: string
+          tanggal_mulai: string
+          tanggal_pengajuan: string
+          updated_at: string
+        }
+        Insert: {
+          akun_belanja: string
+          created_at?: string
+          created_by_name: string
+          created_by_role: string
+          id?: string
+          jenis_kak: string
+          kegiatan: string
+          komponen_output: string
+          pagu_anggaran: number
+          pagu_digunakan: number
+          program_pembebanan: string
+          rincian_output: string
+          sub_komponen: string
+          tanggal_akhir: string
+          tanggal_mulai: string
+          tanggal_pengajuan: string
+          updated_at?: string
+        }
+        Update: {
+          akun_belanja?: string
+          created_at?: string
+          created_by_name?: string
+          created_by_role?: string
+          id?: string
+          jenis_kak?: string
+          kegiatan?: string
+          komponen_output?: string
+          pagu_anggaran?: number
+          pagu_digunakan?: number
+          program_pembebanan?: string
+          rincian_output?: string
+          sub_komponen?: string
+          tanggal_akhir?: string
+          tanggal_mulai?: string
+          tanggal_pengajuan?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      kak_items: {
+        Row: {
+          created_at: string
+          harga_satuan: number
+          id: string
+          kak_id: string
+          nama: string
+          satuan: string
+          subtotal: number
+          volume: number
+        }
+        Insert: {
+          created_at?: string
+          harga_satuan: number
+          id?: string
+          kak_id: string
+          nama: string
+          satuan: string
+          subtotal: number
+          volume: number
+        }
+        Update: {
+          created_at?: string
+          harga_satuan?: number
+          id?: string
+          kak_id?: string
+          nama?: string
+          satuan?: string
+          subtotal?: number
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kak_items_kak_id_fkey"
+            columns: ["kak_id"]
+            isOneToOne: false
+            referencedRelation: "kak"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

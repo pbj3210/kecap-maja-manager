@@ -18,7 +18,7 @@ import {
   ResponsiveContainer, 
   Cell 
 } from 'recharts';
-import { FileText, DollarSign, CalendarClock, ArrowUp, ArrowDown } from 'lucide-react';
+import { FileText, DollarSign, CalendarClock, ArrowUp, ArrowDown, Users } from 'lucide-react';
 
 // Helper function to format currency
 const formatCurrency = (value: number) => {
@@ -41,18 +41,8 @@ const getMonthName = (date: string) => {
 };
 
 const Dashboard = () => {
-  const { kaks } = useKAK();
+  const { kaks, loading } = useKAK();
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Simulate loading data
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   // Calculate summary data
   const totalKAK = kaks.length;
@@ -84,56 +74,46 @@ const Dashboard = () => {
     return acc;
   }, []);
 
-  // Data for budget allocation by program chart
-  const budgetByProgramData = kaks.reduce((acc: any[], kak) => {
-    const existing = acc.find(item => item.name === kak.programPembebanan);
+  // Data for budget allocation by program chart - MODIFIED to be by activity (kegiatan)
+  const budgetByActivityData = kaks.reduce((acc: any[], kak) => {
+    const existing = acc.find(item => item.name === kak.kegiatan);
     if (existing) {
       existing.value += kak.paguAnggaran;
     } else {
-      acc.push({ name: kak.programPembebanan, value: kak.paguAnggaran });
+      acc.push({ name: kak.kegiatan, value: kak.paguAnggaran });
     }
     return acc;
   }, []);
 
-  // Data for monthly trend chart
-  const monthlyData = kaks.reduce((acc: any, kak) => {
-    const month = getMonthName(kak.tanggalPengajuan);
-    const pengajuanDate = new Date(kak.tanggalPengajuan);
-    const monthYear = `${month} ${pengajuanDate.getFullYear()}`;
-    
-    if (!acc[monthYear]) {
-      acc[monthYear] = {
-        month: monthYear,
-        count: 0,
-        total: 0
-      };
+  // Data for users who submitted KAKs - NEW
+  const userSubmissionData = kaks.reduce((acc: any[], kak) => {
+    const existing = acc.find(item => item.name === kak.createdBy.name);
+    if (existing) {
+      existing.count += 1;
+      existing.totalBudget += kak.paguAnggaran;
+    } else {
+      acc.push({ 
+        name: kak.createdBy.name, 
+        count: 1,
+        totalBudget: kak.paguAnggaran,
+        role: kak.createdBy.role
+      });
     }
-    
-    acc[monthYear].count += 1;
-    acc[monthYear].total += kak.paguAnggaran;
-    
     return acc;
-  }, {});
+  }, []);
   
-  const monthlyTrendData = Object.values(monthlyData).sort((a: any, b: any) => {
-    const [aMonth, aYear] = a.month.split(' ');
-    const [bMonth, bYear] = b.month.split(' ');
-    
-    const aDate = new Date(`${aMonth} 1, ${aYear}`);
-    const bDate = new Date(`${bMonth} 1, ${bYear}`);
-    
-    return aDate.getTime() - bDate.getTime();
-  });
+  // Sort by submission count
+  userSubmissionData.sort((a, b) => b.count - a.count);
 
-  // Color schemes
-  const COLORS = ['#9c2b2e', '#e63946', '#e85d04', '#ee9b00', '#2a9d8f'];
+  // Color schemes - modified for orange theme
+  const COLORS = ['#FF9800', '#F57C00', '#EF6C00', '#E65100', '#ED4B00'];
   const CHART_COLORS = {
-    primary: 'hsl(355, 83%, 35%)',
-    secondary: '#2a9d8f',
-    tertiary: '#ee9b00'
+    primary: '#FF9800',
+    secondary: '#E65100',
+    tertiary: '#FFB74D'
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[60vh]">
         <div className="text-center">
@@ -167,8 +147,8 @@ const Dashboard = () => {
                   Dokumen KAK
                 </p>
               </div>
-              <div className="bg-primary/10 p-2 rounded-full">
-                <FileText className="h-5 w-5 text-primary" />
+              <div className="bg-orange-100 p-2 rounded-full">
+                <FileText className="h-5 w-5 text-orange-600" />
               </div>
             </div>
           </CardContent>
@@ -187,8 +167,8 @@ const Dashboard = () => {
                   Keseluruhan Anggaran
                 </p>
               </div>
-              <div className="bg-green-100 p-2 rounded-full">
-                <DollarSign className="h-5 w-5 text-green-600" />
+              <div className="bg-orange-100 p-2 rounded-full">
+                <DollarSign className="h-5 w-5 text-orange-600" />
               </div>
             </div>
           </CardContent>
@@ -207,8 +187,8 @@ const Dashboard = () => {
                   {new Date().toLocaleDateString('id-ID', {month: 'long', year: 'numeric'})}
                 </p>
               </div>
-              <div className="bg-blue-100 p-2 rounded-full">
-                <CalendarClock className="h-5 w-5 text-blue-600" />
+              <div className="bg-orange-100 p-2 rounded-full">
+                <CalendarClock className="h-5 w-5 text-orange-600" />
               </div>
             </div>
           </CardContent>
@@ -229,8 +209,8 @@ const Dashboard = () => {
                   Per KAK
                 </p>
               </div>
-              <div className="bg-amber-100 p-2 rounded-full">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600">
+              <div className="bg-orange-100 p-2 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-600">
                   <path d="M12 20V4" />
                   <path d="M5 12H2" />
                   <path d="M22 12h-3" />
@@ -247,73 +227,67 @@ const Dashboard = () => {
       
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* KAK Submission Trend */}
+        {/* Jumlah User Pengajuan KAK - MODIFIED */}
         <Card className="staggered-item">
           <CardHeader>
-            <CardTitle>Tren Pengajuan KAK</CardTitle>
+            <CardTitle>Jumlah User Pengajuan KAK</CardTitle>
             <CardDescription>
-              Jumlah dan total anggaran KAK per bulan
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={monthlyTrendData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 40 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="month" 
-                    angle={-45} 
-                    textAnchor="end" 
-                    height={70}
-                  />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip 
-                    formatter={(value: any, name: string) => {
-                      if (name === "KAK") return value;
-                      return formatCurrency(value);
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="count"
-                    stroke={CHART_COLORS.primary}
-                    name="KAK"
-                    activeDot={{ r: 8 }}
-                    strokeWidth={2}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="total"
-                    stroke={CHART_COLORS.secondary}
-                    name="Total Anggaran"
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Budget Allocation by Program */}
-        <Card className="staggered-item">
-          <CardHeader>
-            <CardTitle>Alokasi Anggaran per Program</CardTitle>
-            <CardDescription>
-              Distribusi anggaran berdasarkan program
+              User dan jumlah dokumen KAK yang diajukan
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={budgetByProgramData}
+                  data={userSubmissionData}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 40 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="name" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={70}
+                    interval={0}
+                  />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value: any, name: string) => {
+                      if (name === "Jumlah KAK") return value;
+                      return formatCurrency(value);
+                    }}
+                    labelFormatter={(value) => `${value} (${userSubmissionData.find(item => item.name === value)?.role || ''})`}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="count" 
+                    name="Jumlah KAK" 
+                    fill={CHART_COLORS.primary}
+                  />
+                  <Bar 
+                    dataKey="totalBudget" 
+                    name="Total Anggaran" 
+                    fill={CHART_COLORS.secondary}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Budget Allocation by Activity - MODIFIED */}
+        <Card className="staggered-item">
+          <CardHeader>
+            <CardTitle>Alokasi Anggaran per Kegiatan</CardTitle>
+            <CardDescription>
+              Distribusi anggaran berdasarkan kegiatan
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={budgetByActivityData}
                   margin={{ top: 5, right: 30, left: 20, bottom: 40 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
@@ -398,8 +372,8 @@ const Dashboard = () => {
                       key={kak.id}
                       className="flex items-start space-x-4 p-3 rounded-lg bg-secondary/50"
                     >
-                      <div className="bg-primary/10 p-2 rounded-full flex-shrink-0">
-                        <FileText className="h-5 w-5 text-primary" />
+                      <div className="bg-orange-100 p-2 rounded-full flex-shrink-0">
+                        <FileText className="h-5 w-5 text-orange-600" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
@@ -417,8 +391,8 @@ const Dashboard = () => {
                           <p className="text-sm font-semibold">
                             {formatCurrency(kak.paguAnggaran)}
                           </p>
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                            {kak.items.length} item
+                          <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                            {kak.createdBy.name}
                           </span>
                         </div>
                       </div>
