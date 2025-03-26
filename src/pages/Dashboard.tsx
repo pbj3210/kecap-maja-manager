@@ -19,6 +19,18 @@ import {
   Cell 
 } from 'recharts';
 import { FileText, DollarSign, CalendarClock, ArrowUp, ArrowDown, Users } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { formatDate } from '@/lib/utils';
 
 // Helper function to format currency
 const formatCurrency = (value: number) => {
@@ -40,20 +52,86 @@ const getMonthName = (date: string) => {
   return monthNames[monthIndex];
 };
 
+type TimeRange = 'all' | 'month' | 'quarter' | 'semester' | 'year' | 'custom';
+type DateRange = { start: Date | null; end: Date | null };
+
 const Dashboard = () => {
-  const { kaks, loading } = useKAK();
+  const { kaks, loading, fetchKAKs } = useKAK();
   const { user } = useAuth();
+  const [filteredKAKs, setFilteredKAKs] = useState(kaks);
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const [dateRange, setDateRange] = useState<DateRange>({ start: null, end: null });
+  const [customDateRange, setCustomDateRange] = useState<DateRange>({ start: null, end: null });
+
+  // Refresh data on mount
+  useEffect(() => {
+    fetchKAKs();
+  }, []);
+  
+  // Filter KAKs based on selected time range
+  useEffect(() => {
+    let filtered = [...kaks];
+    const now = new Date();
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+    
+    switch (timeRange) {
+      case 'month':
+        // Current month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        break;
+      case 'quarter':
+        // Current quarter
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+        endDate = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0);
+        break;
+      case 'semester':
+        // Current semester
+        const currentSemester = Math.floor(now.getMonth() / 6);
+        startDate = new Date(now.getFullYear(), currentSemester * 6, 1);
+        endDate = new Date(now.getFullYear(), (currentSemester + 1) * 6, 0);
+        break;
+      case 'year':
+        // Current year
+        startDate = new Date(now.getFullYear(), 0, 1);
+        endDate = new Date(now.getFullYear(), 11, 31);
+        break;
+      case 'custom':
+        // Custom date range
+        startDate = customDateRange.start;
+        endDate = customDateRange.end;
+        break;
+      case 'all':
+      default:
+        // Show all data
+        break;
+    }
+    
+    setDateRange({ start: startDate, end: endDate });
+    
+    // Apply date filter if set
+    if (startDate && endDate) {
+      filtered = filtered.filter(kak => {
+        const kakDate = new Date(kak.tanggalPengajuan);
+        return kakDate >= startDate! && kakDate <= endDate!;
+      });
+    }
+    
+    setFilteredKAKs(filtered);
+  }, [kaks, timeRange, customDateRange]);
 
   // Calculate summary data
-  const totalKAK = kaks.length;
-  const totalAnggaran = kaks.reduce((sum, kak) => sum + kak.paguAnggaran, 0);
+  const totalKAK = filteredKAKs.length;
+  const totalAnggaran = filteredKAKs.reduce((sum, kak) => sum + kak.paguAnggaran, 0);
   
   // Get current month and year
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   
   // KAKs in current month
-  const currentMonthKAKs = kaks.filter(kak => {
+  const currentMonthKAKs = filteredKAKs.filter(kak => {
     const pengajuanDate = new Date(kak.tanggalPengajuan);
     return pengajuanDate.getMonth() === currentMonth && 
            pengajuanDate.getFullYear() === currentYear;
@@ -64,7 +142,7 @@ const Dashboard = () => {
   );
 
   // Data for KAK by type chart
-  const kakByTypeData = kaks.reduce((acc: any[], kak) => {
+  const kakByTypeData = filteredKAKs.reduce((acc: any[], kak) => {
     const existing = acc.find(item => item.name === kak.jenisKAK);
     if (existing) {
       existing.value += 1;
@@ -74,8 +152,8 @@ const Dashboard = () => {
     return acc;
   }, []);
 
-  // Data for budget allocation by program chart - MODIFIED to be by activity (kegiatan)
-  const budgetByActivityData = kaks.reduce((acc: any[], kak) => {
+  // Data for budget allocation by activity
+  const budgetByActivityData = filteredKAKs.reduce((acc: any[], kak) => {
     const existing = acc.find(item => item.name === kak.kegiatan);
     if (existing) {
       existing.value += kak.paguAnggaran;
@@ -85,8 +163,8 @@ const Dashboard = () => {
     return acc;
   }, []);
 
-  // Data for users who submitted KAKs - NEW
-  const userSubmissionData = kaks.reduce((acc: any[], kak) => {
+  // Data for users who submitted KAKs
+  const userSubmissionData = filteredKAKs.reduce((acc: any[], kak) => {
     const existing = acc.find(item => item.name === kak.createdBy.name);
     if (existing) {
       existing.count += 1;
@@ -105,12 +183,34 @@ const Dashboard = () => {
   // Sort by submission count
   userSubmissionData.sort((a, b) => b.count - a.count);
 
-  // Color schemes - modified for orange theme
+  // Color schemes
   const COLORS = ['#FF9800', '#F57C00', '#EF6C00', '#E65100', '#ED4B00'];
   const CHART_COLORS = {
     primary: '#FF9800',
     secondary: '#E65100',
     tertiary: '#FFB74D'
+  };
+
+  const handleCustomDateChange = (field: 'start' | 'end', value: string) => {
+    if (!value) return;
+    
+    const date = new Date(value);
+    setCustomDateRange(prev => ({
+      ...prev,
+      [field]: date
+    }));
+  };
+
+  const applyCustomDateRange = () => {
+    if (customDateRange.start && customDateRange.end) {
+      setTimeRange('custom');
+    }
+  };
+
+  const getDateRangeText = () => {
+    if (!dateRange.start || !dateRange.end) return 'Semua Data';
+    
+    return `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
   };
 
   if (loading) {
@@ -129,9 +229,65 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        
+        {/* Time range filters */}
+        <div className="flex flex-wrap gap-4 items-center">
+          <div>
+            <Label className="mr-2">Rentang Waktu:</Label>
+            <Select value={timeRange} onValueChange={(value: TimeRange) => setTimeRange(value)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Pilih Rentang" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Data</SelectItem>
+                <SelectItem value="month">Bulanan</SelectItem>
+                <SelectItem value="quarter">Triwulanan</SelectItem>
+                <SelectItem value="semester">Semesteran</SelectItem>
+                <SelectItem value="year">Tahunan</SelectItem>
+                <SelectItem value="custom">Kustom</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {timeRange === 'custom' && (
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <Label htmlFor="startDate" className="block mb-1">Tanggal Mulai</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={customDateRange.start ? customDateRange.start.toISOString().split('T')[0] : ''}
+                  onChange={(e) => handleCustomDateChange('start', e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="endDate" className="block mb-1">Tanggal Akhir</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={customDateRange.end ? customDateRange.end.toISOString().split('T')[0] : ''}
+                  onChange={(e) => handleCustomDateChange('end', e.target.value)}
+                />
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={applyCustomDateRange}
+                disabled={!customDateRange.start || !customDateRange.end}
+              >
+                Terapkan
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
+      
+      {dateRange.start && dateRange.end && (
+        <div className="bg-orange-50 p-3 rounded-md border border-orange-200 text-orange-800">
+          <p className="text-sm font-medium">Menampilkan data: {getDateRangeText()}</p>
+        </div>
+      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KAK Counter */}
@@ -154,13 +310,13 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* Total Budget */}
+        {/* Total Budget - Renamed */}
         <Card className="staggered-item hover-scale">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
-                  Total Anggaran
+                  Total Pengajuan Anggaran
                 </p>
                 <h3 className="text-2xl font-bold">{formatCurrency(totalAnggaran)}</h3>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -174,13 +330,13 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* Current Month Budget */}
+        {/* Current Month Budget - Renamed */}
         <Card className="staggered-item hover-scale">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
-                  Anggaran Bulan Ini
+                  Total Pengajuan Anggaran Bulan Ini
                 </p>
                 <h3 className="text-2xl font-bold">{formatCurrency(totalCurrentMonthAnggaran)}</h3>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -194,13 +350,13 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* Average Budget */}
+        {/* Average Budget - Renamed */}
         <Card className="staggered-item hover-scale">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">
-                  Rata-rata Anggaran
+                  Rata-rata Anggaran Diajukan
                 </p>
                 <h3 className="text-2xl font-bold">
                   {formatCurrency(totalKAK > 0 ? totalAnggaran / totalKAK : 0)}
@@ -225,9 +381,9 @@ const Dashboard = () => {
         </Card>
       </div>
       
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Jumlah User Pengajuan KAK - MODIFIED */}
+      {/* Charts - Now one per row */}
+      <div className="space-y-6">
+        {/* Jumlah User Pengajuan KAK */}
         <Card className="staggered-item">
           <CardHeader>
             <CardTitle>Jumlah User Pengajuan KAK</CardTitle>
@@ -275,7 +431,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        {/* Budget Allocation by Activity - MODIFIED */}
+        {/* Budget Allocation by Activity */}
         <Card className="staggered-item">
           <CardHeader>
             <CardTitle>Alokasi Anggaran per Kegiatan</CardTitle>
@@ -311,9 +467,7 @@ const Dashboard = () => {
             </div>
           </CardContent>
         </Card>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
         {/* KAK by Type */}
         <Card className="staggered-item">
           <CardHeader>
@@ -332,7 +486,7 @@ const Dashboard = () => {
                     cy="50%"
                     labelLine={false}
                     label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    outerRadius={120}
                     fill="#8884d8"
                     dataKey="value"
                   >
@@ -349,7 +503,7 @@ const Dashboard = () => {
         </Card>
         
         {/* Recent KAK Activity */}
-        <Card className="col-span-1 lg:col-span-2 staggered-item">
+        <Card className="staggered-item">
           <CardHeader>
             <CardTitle>Aktivitas KAK Terbaru</CardTitle>
             <CardDescription>
@@ -358,13 +512,13 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {kaks.length === 0 ? (
+              {filteredKAKs.length === 0 ? (
                 <div className="text-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">Belum ada data KAK</p>
                 </div>
               ) : (
-                kaks
+                filteredKAKs
                   .sort((a, b) => new Date(b.tanggalPengajuan).getTime() - new Date(a.tanggalPengajuan).getTime())
                   .slice(0, 5)
                   .map((kak, index) => (

@@ -36,11 +36,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, FileDown, SortAsc, SortDesc, ArrowDown, ArrowUp } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, FileDown, SortAsc, SortDesc, ArrowDown, ArrowUp } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
+import { formatDate } from '@/lib/utils';
 
 // Format currency
 const formatCurrency = (amount: number) => {
@@ -50,16 +51,6 @@ const formatCurrency = (amount: number) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
-};
-
-// Format date
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
 };
 
 type SortColumn = 'jenisKAK' | 'komponenOutput' | 'tanggalPengajuan' | 'paguAnggaran' | 'createdBy.name';
@@ -201,9 +192,9 @@ const KAKList = () => {
       doc.text(`Akun Belanja: ${kak.akunBelanja}`, 20, 90);
       doc.text(`Pagu Anggaran: ${formatCurrency(kak.paguAnggaran)}`, 20, 100);
       doc.text(`Diajukan oleh: ${kak.createdBy.name}`, 20, 110);
-      doc.text(`Tanggal Pengajuan: ${formatDate(kak.tanggalPengajuan)}`, 20, 120);
-      doc.text(`Tanggal Mulai: ${formatDate(kak.tanggalMulai)}`, 20, 130);
-      doc.text(`Tanggal Akhir: ${formatDate(kak.tanggalAkhir)}`, 20, 140);
+      doc.text(`Tanggal Pengajuan: ${formatDate(new Date(kak.tanggalPengajuan))}`, 20, 120);
+      doc.text(`Tanggal Mulai: ${formatDate(new Date(kak.tanggalMulai))}`, 20, 130);
+      doc.text(`Tanggal Akhir: ${formatDate(new Date(kak.tanggalAkhir))}`, 20, 140);
       
       // Add items table
       let yPos = 160;
@@ -381,10 +372,10 @@ const KAKList = () => {
                   {filteredKAKs.map((kak) => (
                     <TableRow key={kak.id} className="hover-scale">
                       <TableCell className="font-medium">{kak.jenisKAK}</TableCell>
-                      <TableCell className="max-w-[280px] truncate">
+                      <TableCell className="max-w-[280px] whitespace-normal break-words">
                         {kak.komponenOutput}
                       </TableCell>
-                      <TableCell>{formatDate(kak.tanggalPengajuan)}</TableCell>
+                      <TableCell>{formatDate(new Date(kak.tanggalPengajuan))}</TableCell>
                       <TableCell>{formatCurrency(kak.paguAnggaran)}</TableCell>
                       <TableCell>{kak.createdBy.name}</TableCell>
                       <TableCell className="text-right">
