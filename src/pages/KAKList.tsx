@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useKAK } from "@/contexts/KAKContext";
@@ -39,8 +38,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, FileDown, SortAsc, SortDesc, ArrowDown, ArrowUp } from 'lucide-react';
 import { toast } from "@/hooks/use-toast";
-import { saveAs } from 'file-saver';
-import { jsPDF } from 'jspdf';
+import { generateDocFromTemplate } from "@/lib/templateUtils";
 import { formatDate } from '@/lib/utils';
 
 // Format currency
@@ -68,20 +66,16 @@ const KAKList = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   
   useEffect(() => {
-    // Refresh data from the database
     fetchKAKs();
   }, []);
 
   useEffect(() => {
-    // Filter and sort KAKs based on search query, filter type, and sort options
     let filtered = [...kaks];
     
-    // Filter by type if not "all"
     if (filterType !== "all") {
       filtered = filtered.filter(kak => kak.jenisKAK === filterType);
     }
     
-    // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(kak =>
@@ -92,11 +86,9 @@ const KAKList = () => {
       );
     }
     
-    // Sort the data
     filtered.sort((a, b) => {
       let valueA, valueB;
       
-      // Handle nested properties like createdBy.name
       if (sortColumn === 'createdBy.name') {
         valueA = a.createdBy.name;
         valueB = b.createdBy.name;
@@ -108,7 +100,6 @@ const KAKList = () => {
         valueB = b[sortColumn];
       }
       
-      // Compare values
       if (typeof valueA === 'string' && typeof valueB === 'string') {
         return sortDirection === 'asc' 
           ? valueA.localeCompare(valueB) 
@@ -123,22 +114,17 @@ const KAKList = () => {
     setFilteredKAKs(filtered);
   }, [kaks, searchQuery, filterType, sortColumn, sortDirection]);
 
-  // Get unique KAK types for filter
   const uniqueKAKTypes = Array.from(new Set(kaks.map(kak => kak.jenisKAK)));
 
-  // Sort handling
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
-      // Toggle direction if same column
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
-      // New column, set default direction to ascending
       setSortColumn(column);
       setSortDirection('asc');
     }
   };
 
-  // Render sort indicator
   const renderSortIcon = (column: SortColumn) => {
     if (sortColumn !== column) {
       return <ArrowDown className="h-4 w-4 opacity-30" />;
@@ -173,85 +159,15 @@ const KAKList = () => {
     }
   };
 
-  const handleDownload = (kak: any) => {
+  const handleDownload = async (kak: any) => {
     try {
-      // Create a new PDF document
-      const doc = new jsPDF();
-      
-      // Set font size and add title
-      doc.setFontSize(16);
-      doc.text("KERANGKA ACUAN KERJA (KAK)", 105, 20, { align: 'center' });
-      
-      // Add content
-      doc.setFontSize(12);
-      doc.text(`Jenis KAK: ${kak.jenisKAK}`, 20, 40);
-      doc.text(`Program Pembebanan: ${kak.programPembebanan}`, 20, 50);
-      doc.text(`Kegiatan: ${kak.kegiatan}`, 20, 60);
-      doc.text(`Komponen Output: ${kak.komponenOutput}`, 20, 70);
-      doc.text(`Sub Komponen: ${kak.subKomponen}`, 20, 80);
-      doc.text(`Akun Belanja: ${kak.akunBelanja}`, 20, 90);
-      doc.text(`Pagu Anggaran: ${formatCurrency(kak.paguAnggaran)}`, 20, 100);
-      doc.text(`Diajukan oleh: ${kak.createdBy.name}`, 20, 110);
-      doc.text(`Tanggal Pengajuan: ${formatDate(new Date(kak.tanggalPengajuan))}`, 20, 120);
-      doc.text(`Tanggal Mulai: ${formatDate(new Date(kak.tanggalMulai))}`, 20, 130);
-      doc.text(`Tanggal Akhir: ${formatDate(new Date(kak.tanggalAkhir))}`, 20, 140);
-      
-      // Add items table
-      let yPos = 160;
-      doc.text("RINCIAN KEGIATAN:", 20, yPos);
-      yPos += 10;
-      
-      // Table headers
-      doc.setFontSize(10);
-      doc.text("No", 20, yPos);
-      doc.text("Nama Item", 35, yPos);
-      doc.text("Volume", 110, yPos);
-      doc.text("Satuan", 130, yPos);
-      doc.text("Harga Satuan", 150, yPos);
-      doc.text("Subtotal", 180, yPos);
-      
-      yPos += 5;
-      doc.line(20, yPos, 190, yPos); // Draw a line
-      yPos += 5;
-      
-      // Table rows
-      kak.items.forEach((item: any, index: number) => {
-        // Add page if needed
-        if (yPos > 270) {
-          doc.addPage();
-          yPos = 20;
-        }
-        
-        doc.text(`${index + 1}`, 20, yPos);
-        doc.text(item.nama, 35, yPos);
-        doc.text(item.volume.toString(), 110, yPos);
-        doc.text(item.satuan, 130, yPos);
-        doc.text(formatCurrency(item.hargaSatuan), 150, yPos);
-        doc.text(formatCurrency(item.subtotal), 180, yPos);
-        
-        yPos += 10;
-      });
-      
-      yPos += 5;
-      doc.line(20, yPos, 190, yPos); // Draw a line
-      yPos += 10;
-      
-      // Total
-      doc.setFontSize(12);
-      doc.text(`Total: ${formatCurrency(kak.paguDigunakan || kak.items.reduce((sum: number, item: any) => sum + item.subtotal, 0))}`, 150, yPos);
-      
-      // Save the PDF
-      doc.save(`KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.pdf`);
-      
-      toast({
-        title: "Dokumen berhasil diunduh",
-        description: "KAK telah berhasil diunduh sebagai file PDF",
-      });
+      const defaultTemplatePath = localStorage.getItem('defaultTemplatePath');
+      await generateDocFromTemplate(kak, defaultTemplatePath || undefined);
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      console.error("Error generating document:", error);
       toast({
         title: "Gagal mengunduh dokumen",
-        description: "Terjadi kesalahan saat membuat file PDF",
+        description: "Terjadi kesalahan saat membuat file dokumen",
         variant: "destructive",
       });
     }
@@ -291,7 +207,6 @@ const KAKList = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Filters and Search */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -320,7 +235,6 @@ const KAKList = () => {
             </Select>
           </div>
           
-          {/* KAK Table */}
           {filteredKAKs.length === 0 ? (
             <div className="text-center py-10">
               <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -426,7 +340,6 @@ const KAKList = () => {
         </CardContent>
       </Card>
       
-      {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>

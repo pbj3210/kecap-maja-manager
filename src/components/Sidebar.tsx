@@ -1,129 +1,176 @@
-
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { 
-  Home, 
   LayoutDashboard, 
   FileText, 
-  LogOut,
-  ChevronLeft,
-  ChevronRight
+  Settings, 
+  LogOut, 
+  ChevronLeft, 
+  ChevronRight,
+  FileUp
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 
-type SidebarProps = {
+interface SidebarProps {
   isCollapsed: boolean;
   toggleSidebar: () => void;
-};
+}
 
 const Sidebar = ({ isCollapsed, toggleSidebar }: SidebarProps) => {
   const { user, logout } = useAuth();
-  const location = useLocation();
-  
-  const handleLogout = () => {
-    logout();
-    toast({
-      title: "Logout berhasil",
-      description: "Anda telah keluar dari aplikasi",
-    });
-  };
+  const [isMounted, setIsMounted] = useState(false);
 
-  const navItems = [
-    { path: "/", label: "Beranda", icon: <Home size={20} /> },
-    { path: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
-    { path: "/kak", label: "Kerangka Acuan Kerja", icon: <FileText size={20} /> },
-  ];
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) {
+    return null;
+  }
 
   return (
-    <aside className={cn(
-      "h-screen bg-sidebar sticky top-0 flex flex-col border-r border-sidebar-border transition-all duration-300",
-      isCollapsed ? "w-[70px]" : "w-[250px]"
-    )}>
-      {/* Sidebar Header */}
-      <div className="p-4 flex items-center border-b border-sidebar-border">
-        <div className="flex items-center space-x-2">
-          <img 
-            src="/lovable-uploads/fff856ca-c3ac-427d-910f-fb9cd30460d2.png" 
-            alt="Kecap Maja Logo" 
-            className="w-10 h-10 object-contain"
-          />
+    <div
+      className={cn(
+        "fixed left-0 top-0 z-40 h-screen transition-all duration-300 bg-secondary border-r border-border",
+        isCollapsed ? "w-[70px]" : "w-[250px]"
+      )}
+    >
+      {/* Header / Logo */}
+      <div className="flex h-16 items-center justify-between px-3 border-b border-border">
+        <div className="flex items-center">
           {!isCollapsed && (
-            <div>
-              <h1 className="text-lg font-bold text-sidebar-foreground">Kecap Maja</h1>
-              <p className="text-xs text-sidebar-foreground/70">Keuangan Cekatan Anggaran Pengadaan</p>
-            </div>
+            <span className="text-xl font-bold text-orange-500">Kecap Maja</span>
+          )}
+          {isCollapsed && (
+            <span className="text-xl font-bold text-orange-500">KM</span>
           )}
         </div>
       </div>
-      
-      {/* Collapse button */}
-      <Button 
-        variant="ghost" 
-        size="icon" 
-        className="absolute -right-3 top-16 bg-sidebar border border-sidebar-border rounded-full h-6 w-6 p-0 flex items-center justify-center shadow-md z-10"
+
+      {/* Nav Links */}
+      <div className="px-3 py-2">
+        <ul className="space-y-1">
+          <li>
+            <NavLink
+              to="/"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center p-2 rounded-md text-sm group transition-colors hover:bg-orange-600/10",
+                  "hover:text-orange-600",
+                  isActive ? "bg-orange-100 text-orange-600 font-medium" : "text-muted-foreground"
+                )
+              }
+            >
+              <LayoutDashboard className={cn("mr-3 h-5 w-5", isCollapsed && "mr-0")} />
+              {!isCollapsed && <span>Dashboard</span>}
+            </NavLink>
+          </li>
+          <li>
+            <NavLink
+              to="/kak"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center p-2 rounded-md text-sm group transition-colors hover:bg-orange-600/10",
+                  "hover:text-orange-600",
+                  isActive ? "bg-orange-100 text-orange-600 font-medium" : "text-muted-foreground"
+                )
+              }
+            >
+              <FileText className={cn("mr-3 h-5 w-5", isCollapsed && "mr-0")} />
+              {!isCollapsed && <span>Daftar KAK</span>}
+            </NavLink>
+          </li>
+          <li>
+            <NavLink
+              to="/templates"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center p-2 rounded-md text-sm group transition-colors hover:bg-orange-600/10",
+                  "hover:text-orange-600",
+                  isActive ? "bg-orange-100 text-orange-600 font-medium" : "text-muted-foreground"
+                )
+              }
+            >
+              <FileUp className={cn("mr-3 h-5 w-5", isCollapsed && "mr-0")} />
+              {!isCollapsed && <span>Template</span>}
+            </NavLink>
+          </li>
+          <li>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center p-2 rounded-md text-sm group transition-colors hover:bg-orange-600/10",
+                  "hover:text-orange-600",
+                  isActive ? "bg-orange-100 text-orange-600 font-medium" : "text-muted-foreground"
+                )
+              }
+            >
+              <Settings className={cn("mr-3 h-5 w-5", isCollapsed && "mr-0")} />
+              {!isCollapsed && <span>Pengaturan</span>}
+            </NavLink>
+          </li>
+        </ul>
+      </div>
+
+      {/* User Section */}
+      <div className="absolute bottom-0 left-0 right-0 border-t border-border">
+        {!isCollapsed && (
+          <div className="p-3">
+            <div className="flex items-center mb-2">
+              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-semibold mr-2">
+                {user?.name?.charAt(0) || "U"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start text-muted-foreground hover:text-destructive"
+              onClick={logout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Keluar
+            </Button>
+          </div>
+        )}
+        {isCollapsed && (
+          <div className="p-3">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-semibold">
+                {user?.name?.charAt(0) || "U"}
+              </div>
+              <Button 
+                variant="outline" 
+                size="icon"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={logout}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Collapse Button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute -right-3 top-20 h-6 w-6 rounded-full border bg-background shadow-sm"
         onClick={toggleSidebar}
       >
-        {isCollapsed ? 
-          <ChevronRight className="h-4 w-4 text-sidebar-foreground" /> : 
-          <ChevronLeft className="h-4 w-4 text-sidebar-foreground" />
-        }
+        {isCollapsed ? (
+          <ChevronRight className="h-3 w-3" />
+        ) : (
+          <ChevronLeft className="h-3 w-3" />
+        )}
       </Button>
-      
-      {/* Navigation */}
-      <nav className="flex-1 py-6">
-        <ul className="space-y-2 px-2">
-          {navItems.map((item) => (
-            <li key={item.path}>
-              <Link
-                to={item.path}
-                className={cn(
-                  "flex items-center rounded-md px-3 py-2 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  location.pathname === item.path
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground",
-                  isCollapsed ? "justify-center" : "justify-start"
-                )}
-              >
-                <span className="flex-shrink-0">{item.icon}</span>
-                {!isCollapsed && <span className="ml-3">{item.label}</span>}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      
-      {/* User info and logout */}
-      {user && (
-        <div className={cn(
-          "p-4 border-t border-sidebar-border",
-          isCollapsed ? "text-center" : ""
-        )}>
-          <div className="flex items-center mb-2">
-            <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white">
-              {user.name.charAt(0)}
-            </div>
-            {!isCollapsed && (
-              <div className="ml-2">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
-                <p className="text-xs text-sidebar-foreground/70">{user.role}</p>
-              </div>
-            )}
-          </div>
-          <Button 
-            variant="outline" 
-            size={isCollapsed ? "icon" : "default"}
-            className="w-full border-orange-300 hover:bg-orange-100 hover:text-orange-700"
-            onClick={handleLogout}
-          >
-            <LogOut className={cn("h-4 w-4", isCollapsed ? "" : "mr-2")} />
-            {!isCollapsed && <span>Logout</span>}
-          </Button>
-        </div>
-      )}
-    </aside>
+    </div>
   );
 };
 

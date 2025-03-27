@@ -49,9 +49,10 @@ const Layout = () => {
         {/* Main content */}
         <main className={cn(
           "flex-1 transition-all duration-300",
-          isSidebarCollapsed ? "ml-[70px]" : "ml-[250px]"
+          isSidebarCollapsed ? "ml-[70px]" : "ml-[250px]",
+          "px-2" // Reduced padding to move content closer to sidebar
         )}>
-          <div className="container mx-auto px-4 py-6">
+          <div className="w-full mx-auto py-6">
             <Outlet />
           </div>
         </main>

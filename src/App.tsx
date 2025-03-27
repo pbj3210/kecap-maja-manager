@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,41 +16,52 @@ import KAKListPage from "@/pages/KAKList";
 import NotFound from "@/pages/NotFound";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import KAKEdit from "@/pages/KAKEdit";
+import TemplateManager from "./pages/TemplateManager";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <BrowserRouter>
-        <AuthProvider>
-          <KAKProvider>
-            <Toaster />
-            <Sonner />
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              
-              <Route path="/" element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }>
-                <Route index element={<HomePage />} />
-                <Route path="dashboard" element={<DashboardPage />} />
-                <Route path="kak">
-                  <Route index element={<KAKListPage />} />
-                  <Route path="new" element={<KAKFormPage />} />
-                  <Route path="edit/:id" element={<KAKEdit />} />
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <KAKProvider>
+              <Toaster />
+              <Sonner />
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<HomePage />} />
+                  <Route path="dashboard" element={<DashboardPage />} />
+                  <Route path="kak">
+                    <Route index element={<KAKListPage />} />
+                    <Route path="new" element={<KAKFormPage />} />
+                    <Route path="edit/:id" element={<KAKEdit />} />
+                  </Route>
                 </Route>
-              </Route>
-              
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </KAKProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+                
+                <Route path="/templates" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<TemplateManager />} />
+                </Route>
+                
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </KAKProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 
 export default App;
