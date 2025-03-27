@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadTemplate } from "@/lib/templateUtils";
@@ -33,11 +33,6 @@ const TemplateManager = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
   
-  // Fetch templates on component mount
-  useState(() => {
-    fetchTemplates();
-  });
-  
   const fetchTemplates = async () => {
     try {
       const { data, error } = await supabase.storage
@@ -59,6 +54,11 @@ const TemplateManager = () => {
       console.error('Unexpected error fetching templates:', error);
     }
   };
+  
+  // Use useEffect instead of useState for running side effects
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
   
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
