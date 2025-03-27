@@ -35,9 +35,11 @@ const TemplateManager = () => {
   
   const fetchTemplates = async () => {
     try {
-      const { data, error } = await supabase.storage
+      // Fetch templates from the database instead of storage
+      const { data, error } = await supabase
         .from('templates')
-        .list();
+        .select('*')
+        .order('created_at', { ascending: false });
         
       if (error) {
         console.error('Error fetching templates:', error);
@@ -49,6 +51,7 @@ const TemplateManager = () => {
         return;
       }
       
+      console.log('Fetched templates:', data);
       setTemplates(data || []);
     } catch (error) {
       console.error('Unexpected error fetching templates:', error);
@@ -88,17 +91,35 @@ const TemplateManager = () => {
       console.error('Error handling file upload:', error);
     } finally {
       setIsUploading(false);
+      // Reset file input
+      e.target.value = '';
     }
   };
   
-  const handleSetDefaultTemplate = async (path: string) => {
+  const handleSetDefaultTemplate = async (id: string) => {
     try {
-      // Store the default template path in localStorage
-      localStorage.setItem('defaultTemplatePath', path);
+      // First, remove default status from all templates
+      await supabase
+        .from('templates')
+        .update({ is_default: false })
+        .neq('id', 'placeholder'); // Update all templates
+        
+      // Then set the selected template as default
+      const { error } = await supabase
+        .from('templates')
+        .update({ is_default: true })
+        .eq('id', id);
+        
+      if (error) {
+        throw error;
+      }
+      
       toast({
         title: "Template default berhasil diatur",
         description: "Template ini akan digunakan untuk semua dokumen baru.",
       });
+      
+      fetchTemplates(); // Refresh the template list
     } catch (error) {
       console.error('Error setting default template:', error);
       toast({
@@ -109,8 +130,8 @@ const TemplateManager = () => {
     }
   };
   
-  const confirmDelete = (path: string) => {
-    setTemplateToDelete(path);
+  const confirmDelete = (id: string) => {
+    setTemplateToDelete(id);
     setIsDeleteDialogOpen(true);
   };
   
@@ -118,18 +139,34 @@ const TemplateManager = () => {
     if (!templateToDelete) return;
     
     try {
-      const { error } = await supabase.storage
+      // First, get the file path from the template
+      const { data: template, error: fetchError } = await supabase
         .from('templates')
-        .remove([templateToDelete]);
+        .select('file_path')
+        .eq('id', templateToDelete)
+        .single();
         
-      if (error) {
-        console.error('Error deleting template:', error);
-        toast({
-          title: "Gagal menghapus template",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
+      if (fetchError) {
+        throw fetchError;
+      }
+      
+      // Delete from storage first
+      const { error: storageError } = await supabase.storage
+        .from('templates')
+        .remove([template.file_path]);
+        
+      if (storageError) {
+        console.error('Error deleting template file:', storageError);
+      }
+      
+      // Then delete from database
+      const { error: dbError } = await supabase
+        .from('templates')
+        .delete()
+        .eq('id', templateToDelete);
+        
+      if (dbError) {
+        throw dbError;
       }
       
       toast({
@@ -137,26 +174,25 @@ const TemplateManager = () => {
         description: "Template telah berhasil dihapus dari sistem.",
       });
       
-      // Check if the deleted template was the default
-      const defaultPath = localStorage.getItem('defaultTemplatePath');
-      if (defaultPath === templateToDelete) {
-        localStorage.removeItem('defaultTemplatePath');
-      }
-      
       fetchTemplates(); // Refresh the template list
     } catch (error) {
       console.error('Unexpected error deleting template:', error);
+      toast({
+        title: "Gagal menghapus template",
+        description: "Terjadi kesalahan saat menghapus template.",
+        variant: "destructive",
+      });
     } finally {
       setIsDeleteDialogOpen(false);
       setTemplateToDelete(null);
     }
   };
   
-  const handleDownload = async (path: string) => {
+  const handleDownload = async (filePath: string) => {
     try {
       const { data, error } = await supabase.storage
         .from('templates')
-        .download(path);
+        .download(filePath);
         
       if (error) {
         console.error('Error downloading template:', error);
@@ -172,7 +208,7 @@ const TemplateManager = () => {
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = path.split('/').pop() || 'template.docx';
+      a.download = filePath.split('/').pop() || 'template.docx';
       document.body.appendChild(a);
       a.click();
       
@@ -252,41 +288,40 @@ const TemplateManager = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nama Template</TableHead>
-                    <TableHead>Ukuran</TableHead>
+                    <TableHead>Deskripsi</TableHead>
                     <TableHead>Terakhir Diubah</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {templates.map((template) => {
-                    const isDefault = localStorage.getItem('defaultTemplatePath') === template.name;
                     return (
-                      <TableRow key={template.name}>
+                      <TableRow key={template.id}>
                         <TableCell className="font-medium">
                           {template.name}
-                          {isDefault && (
+                          {template.is_default && (
                             <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
                               Default
                             </span>
                           )}
                         </TableCell>
-                        <TableCell>{formatFileSize(template.metadata?.size || 0)}</TableCell>
-                        <TableCell>{new Date(template.created_at).toLocaleString('id-ID')}</TableCell>
+                        <TableCell>{template.description || "-"}</TableCell>
+                        <TableCell>{new Date(template.updated_at).toLocaleString('id-ID')}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDownload(template.name)}
+                              onClick={() => handleDownload(template.file_path)}
                               title="Unduh Template"
                             >
                               <Download className="h-4 w-4" />
                             </Button>
-                            {!isDefault && (
+                            {!template.is_default && (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleSetDefaultTemplate(template.name)}
+                                onClick={() => handleSetDefaultTemplate(template.id)}
                                 title="Jadikan Default"
                               >
                                 Jadikan Default
@@ -295,7 +330,7 @@ const TemplateManager = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => confirmDelete(template.name)}
+                              onClick={() => confirmDelete(template.id)}
                               className="text-destructive hover:text-destructive"
                               title="Hapus Template"
                             >
@@ -340,17 +375,6 @@ const TemplateManager = () => {
       </Dialog>
     </div>
   );
-};
-
-// Helper function to format file size
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes';
-  
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
 export default TemplateManager;

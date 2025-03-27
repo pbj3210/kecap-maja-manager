@@ -28,6 +28,25 @@ export async function uploadTemplate(file: File): Promise<string | null> {
       return null;
     }
     
+    // After successful upload, store template metadata in the templates table
+    const { error: dbError } = await supabase
+      .from('templates')
+      .insert({
+        name: file.name,
+        file_path: fileName,
+        description: `Template uploaded on ${new Date().toLocaleDateString()}`
+      });
+      
+    if (dbError) {
+      console.error('Error storing template metadata:', dbError);
+      toast({
+        title: "Gagal menyimpan metadata template",
+        description: dbError.message,
+        variant: "destructive",
+      });
+      // We don't return null here because the file was uploaded successfully
+    }
+    
     return data.path;
   } catch (error) {
     console.error('Unexpected error uploading template:', error);
