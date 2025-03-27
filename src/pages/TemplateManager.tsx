@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { FileUpload, Download, File, Trash2 } from "lucide-react";
+import { Upload, Download, File, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import {
   Table,
@@ -219,7 +219,7 @@ const TemplateManager = () => {
                 />
                 <Button disabled={isUploading}>
                   {isUploading ? "Mengunggah..." : "Unggah"}
-                  <FileUpload className="ml-2 h-4 w-4" />
+                  <Upload className="ml-2 h-4 w-4" />
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
