@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { saveAs } from 'file-saver';
 import { toast } from "@/hooks/use-toast";
 import { formatDate } from './utils';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
 
 // Function to upload template to Supabase storage
 export async function uploadTemplate(file: File): Promise<string | null> {
@@ -88,6 +90,22 @@ export async function downloadTemplate(path: string): Promise<Blob | null> {
   }
 }
 
+// Helper function to convert numbers to words (Terbilang)
+function numberToWords(num: number): string {
+  const units = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas'];
+  
+  if (num < 0) return `minus ${numberToWords(Math.abs(num))}`;
+  if (num < 12) return units[num];
+  if (num < 20) return `${units[num % 10]} belas`;
+  if (num < 100) return `${units[Math.floor(num / 10)]} puluh ${units[num % 10]}`;
+  if (num < 200) return `seratus ${numberToWords(num % 100)}`;
+  if (num < 1000) return `${units[Math.floor(num / 100)]} ratus ${numberToWords(num % 100)}`;
+  if (num < 2000) return `seribu ${numberToWords(num % 1000)}`;
+  if (num < 1000000) return `${numberToWords(Math.floor(num / 1000))} ribu ${numberToWords(num % 1000)}`;
+  if (num < 1000000000) return `${numberToWords(Math.floor(num / 1000000))} juta ${numberToWords(num % 1000000)}`;
+  return `${numberToWords(Math.floor(num / 1000000000))} milyar ${numberToWords(num % 1000000000)}`;
+}
+
 // Function to generate a document from template with KAK data
 export async function generateDocFromTemplate(kak: any, templatePath?: string): Promise<void> {
   try {
@@ -101,7 +119,12 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       throw new Error("Template tidak ditemukan");
     }
     
-    // For this implementation, we're using docxtemplater that will be added as a dependency
+    // Convert template blob to array buffer
+    const templateContent = await templateBlob.arrayBuffer();
+    
+    // Calculate total amount
+    const totalAmount = calculateTotal(kak.items);
+    
     // We need to convert the KAK data into a format suitable for the template
     const data = {
       jenisKAK: kak.jenisKAK,
@@ -111,7 +134,9 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       subKomponen: kak.subKomponen,
       akunBelanja: kak.akunBelanja,
       paguAnggaran: formatCurrency(kak.paguAnggaran),
-      paguDigunakan: formatCurrency(kak.paguDigunakan || calculateTotal(kak.items)),
+      paguAnggaranTerbilang: numberToWords(kak.paguAnggaran),
+      paguDigunakan: formatCurrency(kak.paguDigunakan || totalAmount),
+      paguDigunakanTerbilang: numberToWords(kak.paguDigunakan || totalAmount),
       createdByName: kak.createdBy.name,
       createdByRole: kak.createdBy.role,
       tanggalPengajuan: formatDate(new Date(kak.tanggalPengajuan)),
@@ -124,22 +149,45 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
         satuan: item.satuan,
         hargaSatuan: formatCurrency(item.hargaSatuan),
         subtotal: formatCurrency(item.subtotal)
-      }))
+      })),
+      total: formatCurrency(totalAmount),
+      totalTerbilang: numberToWords(totalAmount)
     };
-    
-    // Forward to the API for processing
-    const formData = new FormData();
-    formData.append('template', templateBlob, 'template.docx');
-    formData.append('data', JSON.stringify(data));
-    
-    // In a real implementation, we would send this to a server for processing
-    // For now, we'll use a mock implementation that simply downloads the template
-    saveAs(templateBlob, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.docx`);
-    
-    toast({
-      title: "Dokumen berhasil dibuat",
-      description: "Template berhasil diunduh. Silakan buka dan periksa hasilnya.",
-    });
+
+    try {
+      // Load the docx file as binary content
+      const zip = new PizZip(templateContent);
+      
+      // Initialize the template with PizZip instance
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+      
+      // Render the document with the provided data
+      doc.render(data);
+      
+      // Generate the output as a blob
+      const out = doc.getZip().generate({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        compression: 'DEFLATE',
+      });
+      
+      // Save the output file
+      saveAs(out, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.docx`);
+      
+      toast({
+        title: "Dokumen berhasil dibuat",
+        description: "Template berhasil diunduh. Silakan buka dan periksa hasilnya.",
+      });
+    } catch (error: any) {
+      console.error('Error rendering template:', error);
+      if (error.properties && error.properties.errors) {
+        console.error('Template error details:', error.properties.errors);
+      }
+      throw new Error(`Gagal menghasilkan dokumen: ${error.message}`);
+    }
   } catch (error) {
     console.error('Error generating document from template:', error);
     toast({
