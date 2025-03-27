@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useKAK } from "@/contexts/KAKContext";
@@ -40,6 +41,7 @@ import { FileText, Download, Edit, Trash2, Copy, MoreHorizontal, Search, Plus, F
 import { toast } from "@/hooks/use-toast";
 import { generateDocFromTemplate } from "@/lib/templateUtils";
 import { formatDate } from '@/lib/utils';
+import { supabase } from "@/integrations/supabase/client";
 
 // Format currency
 const formatCurrency = (amount: number) => {
@@ -64,10 +66,42 @@ const KAKList = () => {
   const [kakToDelete, setKakToDelete] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>('tanggalPengajuan');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [defaultTemplatePath, setDefaultTemplatePath] = useState<string | null>(null);
   
   useEffect(() => {
     fetchKAKs();
+    fetchDefaultTemplate();
   }, []);
+
+  const fetchDefaultTemplate = async () => {
+    try {
+      // First try to get the default template
+      const { data: defaultTemplate, error: defaultError } = await supabase
+        .from('templates')
+        .select('file_path')
+        .eq('is_default', true)
+        .single();
+        
+      if (!defaultError && defaultTemplate) {
+        setDefaultTemplatePath(defaultTemplate.file_path);
+        localStorage.setItem('defaultTemplatePath', defaultTemplate.file_path);
+        return;
+      }
+      
+      // If no default template, get the first available template
+      const { data: templates, error: templatesError } = await supabase
+        .from('templates')
+        .select('file_path')
+        .limit(1);
+        
+      if (!templatesError && templates && templates.length > 0) {
+        setDefaultTemplatePath(templates[0].file_path);
+        localStorage.setItem('defaultTemplatePath', templates[0].file_path);
+      }
+    } catch (error) {
+      console.error('Error fetching default template:', error);
+    }
+  };
 
   useEffect(() => {
     let filtered = [...kaks];
@@ -161,7 +195,6 @@ const KAKList = () => {
 
   const handleDownload = async (kak: any) => {
     try {
-      const defaultTemplatePath = localStorage.getItem('defaultTemplatePath');
       await generateDocFromTemplate(kak, defaultTemplatePath || undefined);
     } catch (error) {
       console.error("Error generating document:", error);

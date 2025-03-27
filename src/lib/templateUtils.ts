@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { saveAs } from 'file-saver';
 import { toast } from "@/hooks/use-toast";
@@ -9,10 +8,8 @@ import Docxtemplater from 'docxtemplater';
 // Function to upload template to Supabase storage
 export async function uploadTemplate(file: File): Promise<string | null> {
   try {
-    // Create a unique filename
     const fileName = `template_${new Date().getTime()}.docx`;
     
-    // Upload the file to Supabase storage
     const { data, error } = await supabase.storage
       .from('templates')
       .upload(fileName, file, {
@@ -30,7 +27,6 @@ export async function uploadTemplate(file: File): Promise<string | null> {
       return null;
     }
     
-    // After successful upload, store template metadata in the templates table
     const { error: dbError } = await supabase
       .from('templates')
       .insert({
@@ -46,7 +42,7 @@ export async function uploadTemplate(file: File): Promise<string | null> {
         description: dbError.message,
         variant: "destructive",
       });
-      // We don't return null here because the file was uploaded successfully
+      return null;
     }
     
     return data.path;
@@ -106,26 +102,77 @@ function numberToWords(num: number): string {
   return `${numberToWords(Math.floor(num / 1000000000))} milyar ${numberToWords(num % 1000000000)}`;
 }
 
+// Function to get default template path
+async function getDefaultTemplatePath(): Promise<string | null> {
+  try {
+    const { data: templateData, error: templateError } = await supabase
+      .from('templates')
+      .select('file_path')
+      .eq('is_default', true)
+      .single();
+      
+    if (templateError && templateError.code !== 'PGRST116') {
+      console.error('Error fetching default template:', templateError);
+      return null;
+    }
+    
+    if (templateData) {
+      return templateData.file_path;
+    }
+    
+    const { data: templates, error: templatesError } = await supabase
+      .from('templates')
+      .select('file_path')
+      .limit(1);
+      
+    if (templatesError) {
+      console.error('Error fetching templates:', templatesError);
+      return null;
+    }
+    
+    if (templates && templates.length > 0) {
+      return templates[0].file_path;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting default template path:', error);
+    return null;
+  }
+}
+
 // Function to generate a document from template with KAK data
 export async function generateDocFromTemplate(kak: any, templatePath?: string): Promise<void> {
   try {
-    // Use default template if no specific template is provided
-    const defaultTemplatePath = 'default_template.docx';
-    const path = templatePath || defaultTemplatePath;
+    let path = templatePath;
     
-    // Download the template
-    const templateBlob = await downloadTemplate(path);
-    if (!templateBlob) {
-      throw new Error("Template tidak ditemukan");
+    if (!path) {
+      path = localStorage.getItem('defaultTemplatePath') || await getDefaultTemplatePath();
+      
+      if (!path) {
+        toast({
+          title: "Menggunakan template Google Docs",
+          description: "Template di Supabase tidak ditemukan, mengalihkan ke Google Docs",
+        });
+        window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
+        return;
+      }
     }
     
-    // Convert template blob to array buffer
+    const templateBlob = await downloadTemplate(path);
+    if (!templateBlob) {
+      toast({
+        title: "Template tidak dapat diunduh",
+        description: "Mengalihkan ke template Google Docs",
+      });
+      window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
+      return;
+    }
+    
     const templateContent = await templateBlob.arrayBuffer();
     
-    // Calculate total amount
     const totalAmount = calculateTotal(kak.items);
     
-    // We need to convert the KAK data into a format suitable for the template
     const data = {
       jenisKAK: kak.jenisKAK,
       programPembebanan: kak.programPembebanan,
@@ -155,26 +202,21 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     };
 
     try {
-      // Load the docx file as binary content
       const zip = new PizZip(templateContent);
       
-      // Initialize the template with PizZip instance
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
       });
       
-      // Render the document with the provided data
       doc.render(data);
       
-      // Generate the output as a blob
       const out = doc.getZip().generate({
         type: 'blob',
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         compression: 'DEFLATE',
       });
       
-      // Save the output file
       saveAs(out, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.docx`);
       
       toast({
