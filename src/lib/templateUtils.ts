@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { saveAs } from 'file-saver';
 import { toast } from "@/hooks/use-toast";
@@ -141,9 +142,56 @@ async function getDefaultTemplatePath(): Promise<string | null> {
   }
 }
 
+// Function to check if a storage bucket exists and create it if it doesn't
+async function ensureTemplateBucketExists(): Promise<boolean> {
+  try {
+    // Check if the templates bucket exists
+    const { data: buckets, error } = await supabase
+      .storage
+      .listBuckets();
+    
+    if (error) {
+      console.error('Error listing buckets:', error);
+      return false;
+    }
+    
+    const templateBucketExists = buckets.some(bucket => bucket.name === 'templates');
+    
+    if (!templateBucketExists) {
+      // If the bucket doesn't exist, create it
+      const { error: createBucketError } = await supabase
+        .storage
+        .createBucket('templates', {
+          public: true
+        });
+      
+      if (createBucketError) {
+        console.error('Error creating templates bucket:', createBucketError);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error ensuring template bucket exists:', error);
+    return false;
+  }
+}
+
 // Function to generate a document from template with KAK data
 export async function generateDocFromTemplate(kak: any, templatePath?: string): Promise<void> {
   try {
+    // Make sure the templates bucket exists
+    const bucketExists = await ensureTemplateBucketExists();
+    if (!bucketExists) {
+      toast({
+        title: "Tidak dapat mengakses storage",
+        description: "Mengalihkan ke template Google Docs",
+      });
+      window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
+      return;
+    }
+    
     let path = templatePath;
     
     if (!path) {
@@ -202,6 +250,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     };
 
     try {
+      console.log('Rendering template with data:', data);
       const zip = new PizZip(templateContent);
       
       const doc = new Docxtemplater(zip, {
@@ -209,19 +258,23 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
         linebreaks: true,
       });
       
+      // Render the document with data
       doc.render(data);
       
+      // Generate and download the document
       const out = doc.getZip().generate({
         type: 'blob',
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         compression: 'DEFLATE',
       });
       
-      saveAs(out, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${kak.id.slice(0, 8)}.docx`);
+      // Use a more descriptive filename with date
+      const currentDate = new Date().toISOString().slice(0, 10);
+      saveAs(out, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${currentDate}.docx`);
       
       toast({
         title: "Dokumen berhasil dibuat",
-        description: "Template berhasil diunduh. Silakan buka dan periksa hasilnya.",
+        description: "Dokumen KAK berhasil diunduh dengan data yang telah diisi.",
       });
     } catch (error: any) {
       console.error('Error rendering template:', error);

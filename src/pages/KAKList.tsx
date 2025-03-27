@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useKAK } from "@/contexts/KAKContext";
@@ -75,7 +74,22 @@ const KAKList = () => {
 
   const fetchDefaultTemplate = async () => {
     try {
-      // First try to get the default template
+      const { data: buckets, error: bucketsError } = await supabase
+        .storage
+        .listBuckets();
+        
+      if (bucketsError) {
+        console.error('Error checking buckets:', bucketsError);
+        return;
+      }
+      
+      const templateBucketExists = buckets.some(bucket => bucket.name === 'templates');
+      
+      if (!templateBucketExists) {
+        console.log('Templates bucket does not exist, falling back to Google Docs template');
+        return;
+      }
+      
       const { data: defaultTemplate, error: defaultError } = await supabase
         .from('templates')
         .select('file_path')
@@ -83,20 +97,23 @@ const KAKList = () => {
         .single();
         
       if (!defaultError && defaultTemplate) {
+        console.log('Found default template:', defaultTemplate.file_path);
         setDefaultTemplatePath(defaultTemplate.file_path);
         localStorage.setItem('defaultTemplatePath', defaultTemplate.file_path);
         return;
       }
       
-      // If no default template, get the first available template
       const { data: templates, error: templatesError } = await supabase
         .from('templates')
         .select('file_path')
         .limit(1);
         
       if (!templatesError && templates && templates.length > 0) {
+        console.log('Found first available template:', templates[0].file_path);
         setDefaultTemplatePath(templates[0].file_path);
         localStorage.setItem('defaultTemplatePath', templates[0].file_path);
+      } else {
+        console.log('No templates found in database');
       }
     } catch (error) {
       console.error('Error fetching default template:', error);
@@ -195,6 +212,12 @@ const KAKList = () => {
 
   const handleDownload = async (kak: any) => {
     try {
+      console.log('Downloading document for KAK:', kak.id);
+      toast({
+        title: "Memproses dokumen",
+        description: "Sedang menyiapkan dokumen KAK...",
+      });
+      
       await generateDocFromTemplate(kak, defaultTemplatePath || undefined);
     } catch (error) {
       console.error("Error generating document:", error);
@@ -350,8 +373,8 @@ const KAKList = () => {
                               onClick={() => handleDownload(kak)}
                               className="text-orange-600"
                             >
-                              <Download className="mr-2 h-4 w-4" />
-                              <span>Download</span>
+                              <FileDown className="mr-2 h-4 w-4" />
+                              <span>Download Dokumen</span>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
