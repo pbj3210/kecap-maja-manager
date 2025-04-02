@@ -223,6 +223,15 @@ const KAKList = () => {
         throw new Error("Data KAK tidak valid");
       }
       
+      // Check for required fields
+      const requiredFields = ['jenisKAK', 'programPembebanan', 'kegiatan', 'komponenOutput'];
+      const missingFields = requiredFields.filter(field => !kak[field]);
+      
+      if (missingFields.length > 0) {
+        console.warn(`KAK is missing required fields: ${missingFields.join(', ')}`);
+        // Continue anyway, but log the warning
+      }
+      
       if (!Array.isArray(kak.items) || kak.items.length === 0) {
         console.warn("KAK doesn't have any items:", kak.id);
         // Continue anyway, as the template might not require items
@@ -231,9 +240,19 @@ const KAKList = () => {
       await generateDocFromTemplate(kak, defaultTemplatePath || undefined);
     } catch (error: any) {
       console.error("Error generating document:", error);
+      let errorMessage = "Terjadi kesalahan saat membuat file dokumen";
+      
+      // Check if the error is related to template issues
+      if (error.message && (
+          error.message.includes("template") || 
+          error.message.includes("tag") || 
+          error.message.includes("Format"))) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Gagal mengunduh dokumen",
-        description: error.message || "Terjadi kesalahan saat membuat file dokumen",
+        description: errorMessage,
         variant: "destructive",
       });
     }

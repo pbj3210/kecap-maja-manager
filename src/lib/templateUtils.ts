@@ -145,7 +145,6 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     // If Google Docs template fails, try the Supabase template
     if (!templateContent && templatePath) {
       console.log('Primary Google Docs template failed, trying Supabase template:', templatePath);
-      // Make sure the templates bucket exists
       const bucketExists = await ensureTemplateBucketExists();
       if (!bucketExists) {
         toast({
@@ -226,7 +225,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       const zipFiles = Object.keys(zip.files);
       console.log('Files in template zip:', zipFiles);
       
-      // Configure docxtemplater without errorHandler
+      // Configure docxtemplater with better error handling
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
@@ -255,26 +254,42 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
         });
       } catch (error: any) {
         console.error('Error rendering template:', error);
+        
+        let errorMessage = "Terjadi kesalahan dalam template dokumen.";
+        
         if (error.properties && error.properties.errors) {
           console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
           
-          // Check for specific errors
-          if (error.properties.errors instanceof Array) {
-            const errorMessages = error.properties.errors
-              .map((e: any) => e.message || String(e))
-              .join(', ');
-            throw new Error(`Error dalam template: ${errorMessages}`);
+          // Check if there are specific template tag issues
+          if (Array.isArray(error.properties.errors)) {
+            // Look for duplicate tag errors
+            const duplicateErrors = error.properties.errors.filter((e: any) => 
+              e.properties && (e.properties.id === 'duplicate_open_tag' || e.properties.id === 'duplicate_close_tag')
+            );
+            
+            if (duplicateErrors.length > 0) {
+              errorMessage = "Template memiliki kesalahan format tag. Silakan perbaiki format tag {{ dan }} dalam template.";
+              
+              // Add specific tag information if available
+              const problemTags = duplicateErrors.map((e: any) => e.properties.xtag).join(', ');
+              if (problemTags) {
+                errorMessage += ` Tag bermasalah: ${problemTags}`;
+              }
+            }
           }
         }
-        throw new Error(`Gagal menghasilkan dokumen: ${error.message}`);
+        
+        toast({
+          title: "Format template tidak valid",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error generating document from template:', error);
-      toast({
-        title: "Gagal membuat dokumen",
-        description: error instanceof Error ? error.message : "Terjadi kesalahan saat membuat dokumen",
-        variant: "destructive",
-      });
+      throw error;
     }
   } catch (error) {
     console.error('Error generating document from template:', error);
