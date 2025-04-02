@@ -31,6 +31,14 @@ export function generateWordDoc(
   try {
     console.log('Generating Word document with data:', JSON.stringify(data, null, 2));
     
+    // Pre-processing validation for Google Docs templates
+    const textDecoder = new TextDecoder('utf-8');
+    const templateText = textDecoder.decode(templateContent.slice(0, 200)); // Check first 200 bytes
+    const isGoogleDocs = templateText.includes('Google') || templateText.includes('Docs');
+    if (isGoogleDocs) {
+      console.log('Detected Google Docs template format');
+    }
+    
     // Load the docx file as binary content
     const zip = new PizZip(templateContent);
     
@@ -59,6 +67,19 @@ export function generateWordDoc(
       console.error('Docxtemplater error in utils:', error);
       if (error.properties && error.properties.errors) {
         console.error('Error details in utils:', error.properties.errors);
+        
+        // Extract specific error messages for tag issues
+        const errors = error.properties.errors;
+        if (Array.isArray(errors)) {
+          errors.forEach((err: any) => {
+            if (err.properties) {
+              console.error(`Tag error: ${err.properties.id} - ${err.properties.explanation}`);
+              if (err.properties.xtag) {
+                console.error(`Problem tag: ${err.properties.xtag}`);
+              }
+            }
+          });
+        }
       }
       throw error;
     }

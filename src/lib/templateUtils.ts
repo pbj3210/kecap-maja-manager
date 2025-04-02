@@ -115,6 +115,7 @@ async function fetchTemplateFromUrl(url: string): Promise<ArrayBuffer | null> {
       if (idMatch && idMatch[1]) {
         const docId = idMatch[1];
         fetchUrl = `https://docs.google.com/document/d/${docId}/export?format=docx`;
+        console.log('Using Google Docs export URL:', fetchUrl);
       }
     }
     
@@ -129,6 +130,32 @@ async function fetchTemplateFromUrl(url: string): Promise<ArrayBuffer | null> {
   } catch (error) {
     console.error('Error fetching template from URL:', error);
     return null;
+  }
+}
+
+// Function to validate template for common Google Docs issues
+function validateGoogleDocsTemplate(templateContent: ArrayBuffer): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  
+  try {
+    // Basic size validation
+    if (templateContent.byteLength < 2000) {
+      issues.push("Template file terlalu kecil, kemungkinan tidak valid");
+    }
+    
+    // Check if file is a valid ZIP (DOCX files are ZIP archives)
+    try {
+      new PizZip(templateContent);
+    } catch (e) {
+      issues.push("File bukan dokumen Word yang valid");
+      return { valid: issues.length === 0, issues };
+    }
+    
+    // Further validation could be added here
+    return { valid: issues.length === 0, issues };
+  } catch (error) {
+    issues.push("Gagal memvalidasi template");
+    return { valid: false, issues };
   }
 }
 
@@ -175,6 +202,17 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
         });
         return;
       }
+    }
+    
+    // Validate the template before processing
+    const validation = validateGoogleDocsTemplate(templateContent);
+    if (!validation.valid) {
+      toast({
+        title: "Template tidak valid",
+        description: validation.issues.join('. '),
+        variant: "destructive",
+      });
+      return;
     }
     
     const totalAmount = calculateTotal(kak.items);
@@ -255,51 +293,75 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       } catch (error: any) {
         console.error('Error rendering template:', error);
         
-        // Improved debugging for Google Docs template errors
+        // Extra defensive Google Docs specific error debugging
+        let errorMessage = "Terjadi kesalahan saat memproses template Google Docs.";
+        
         if (error.properties && error.properties.errors) {
           console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
           
-          // Check for malformed or incomplete tags
-          let errorMessage = "Terjadi kesalahan format pada template Google Docs.";
+          // Create a more detailed error analysis
           const errors = error.properties.errors;
           
           if (Array.isArray(errors)) {
-            // Common Google Docs template issues
-            const tagErrors = errors.filter((e: any) => 
-              e.properties && (
-                e.properties.id === 'unopened_tag' || 
-                e.properties.id === 'unclosed_tag' ||
-                e.properties.id === 'duplicate_open_tag' ||
-                e.properties.id === 'duplicate_close_tag'
-              )
+            // Group errors by type
+            const tagIssues = errors.filter((e: any) => 
+              e.properties && [
+                'unopened_tag', 
+                'unclosed_tag',
+                'duplicate_open_tag',
+                'duplicate_close_tag'
+              ].includes(e.properties.id)
             );
             
-            if (tagErrors.length > 0) {
-              const problemTags = tagErrors
+            if (tagIssues.length > 0) {
+              // Extract all problematic tags
+              const problemTags = tagIssues
                 .filter((e: any) => e.properties && e.properties.xtag)
-                .map((e: any) => e.properties.xtag)
-                .join(', ');
+                .map((e: any) => e.properties.xtag);
               
-              errorMessage = "Template Google Docs memiliki tag yang tidak sesuai format. ";
+              // Group by error type for better reporting
+              const unopenedTags = tagIssues
+                .filter((e: any) => e.properties && e.properties.id === 'unopened_tag')
+                .map((e: any) => e.properties.xtag);
+                
+              const unclosedTags = tagIssues
+                .filter((e: any) => e.properties && e.properties.id === 'unclosed_tag')
+                .map((e: any) => e.properties.xtag);
               
-              if (problemTags) {
-                errorMessage += `Tag bermasalah: ${problemTags}. `;
+              const duplicateTags = tagIssues
+                .filter((e: any) => e.properties && 
+                  (e.properties.id === 'duplicate_open_tag' || e.properties.id === 'duplicate_close_tag'))
+                .map((e: any) => e.properties.xtag);
+              
+              // Build a user-friendly error message
+              errorMessage = "Template Google Docs memiliki kesalahan format tag:";
+              
+              if (unopenedTags.length > 0) {
+                errorMessage += `\n- Tag tidak dibuka dengan benar: ${unopenedTags.join(', ')}`;
               }
               
-              errorMessage += "Pastikan semua tag menggunakan format {{nama}} dengan tepat tanpa spasi atau karakter tambahan di antara kurung kurawal.";
+              if (unclosedTags.length > 0) {
+                errorMessage += `\n- Tag tidak ditutup dengan benar: ${unclosedTags.join(', ')}`;
+              }
+              
+              if (duplicateTags.length > 0) {
+                errorMessage += `\n- Tag duplikat: ${duplicateTags.join(', ')}`;
+              }
+              
+              errorMessage += "\n\nPastikan semua tag menggunakan format {{nama}} dengan tepat tanpa spasi atau karakter tambahan di antara kurung kurawal.";
             }
           }
-          
-          toast({
-            title: "Format template Google Docs tidak valid",
-            description: errorMessage,
-            variant: "destructive",
-          });
-          
-          throw new Error(errorMessage);
-        } else {
-          throw new Error("Terjadi kesalahan saat memproses template Google Docs");
         }
+        
+        // Log and display the error
+        console.error('Detailed error message:', errorMessage);
+        toast({
+          title: "Format template Google Docs tidak valid",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error generating document from template:', error);
