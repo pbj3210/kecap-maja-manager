@@ -18,6 +18,36 @@ export function formatDate(date: Date): string {
 }
 
 /**
+ * Sanitize template tags to handle common Google Docs formatting issues
+ * This helps with duplicate tags, split tags, and other common problems
+ */
+export function sanitizeTemplateContent(content: ArrayBuffer): ArrayBuffer {
+  try {
+    // We'll try to detect and fix common Google Docs template issues
+    // Convert ArrayBuffer to a string to work with it
+    const textDecoder = new TextDecoder('utf-8');
+    const xmlContent = textDecoder.decode(content);
+    
+    // Look for problematic patterns in the XML content
+    const fixedXml = xmlContent
+      // Fix duplicate opening tags: {{tag -> {tag
+      .replace(/\{\{([a-zA-Z0-9_]+)/g, '{$1')
+      // Fix duplicate closing tags: tag}} -> tag}
+      .replace(/([a-zA-Z0-9_]+)\}\}/g, '$1}')
+      // Fix split tags with text formatting in between
+      .replace(/\{([a-zA-Z0-9_]+)[^}]*\}/g, '{$1}');
+    
+    // Convert back to ArrayBuffer
+    const textEncoder = new TextEncoder();
+    return textEncoder.encode(fixedXml).buffer;
+  } catch (error) {
+    console.warn('Error trying to sanitize template content:', error);
+    // If sanitization fails, return original content
+    return content;
+  }
+}
+
+/**
  * Generate a Word document from a template and data
  * @param templateContent The template content as an ArrayBuffer
  * @param data The data to inject into the template
@@ -42,16 +72,21 @@ export function generateWordDoc(
       }
     });
     
+    // Try to sanitize template content for Google Docs issues
+    let processedTemplateContent = templateContent;
+    
     // Pre-processing validation for Google Docs templates
     const textDecoder = new TextDecoder('utf-8');
     const templateText = textDecoder.decode(templateContent.slice(0, 200)); // Check first 200 bytes
     const isGoogleDocs = templateText.includes('Google') || templateText.includes('Docs');
+    
     if (isGoogleDocs) {
-      console.log('Detected Google Docs template format');
+      console.log('Detected Google Docs template format - applying sanitization');
+      processedTemplateContent = sanitizeTemplateContent(templateContent);
     }
     
     // Load the docx file as binary content
-    const zip = new PizZip(templateContent);
+    const zip = new PizZip(processedTemplateContent);
     
     // List files in the zip to debug template structure
     console.log('Files in template zip:', Object.keys(zip.files));
@@ -60,6 +95,7 @@ export function generateWordDoc(
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      delimiters: { start: '{', end: '}' } // Use single braces for Google Docs compatibility
     });
     
     // Add error handling using try-catch

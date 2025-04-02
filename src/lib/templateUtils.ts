@@ -1,7 +1,8 @@
+
 import { supabase } from "@/integrations/supabase/client";
 import { saveAs } from 'file-saver';
 import { toast } from "@/hooks/use-toast";
-import { formatDate } from './utils';
+import { formatDate, sanitizeTemplateContent } from './utils';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 
@@ -150,7 +151,35 @@ function validateGoogleDocsTemplate(templateContent: ArrayBuffer): { valid: bool
       return { valid: issues.length === 0, issues };
     }
     
-    // Further validation could be added here
+    // Check for template tags format to ensure they're consistent with the expected pattern
+    try {
+      const zip = new PizZip(templateContent);
+      const documentXml = zip.files['word/document.xml'];
+      
+      if (documentXml) {
+        const xmlContent = documentXml.asText();
+        
+        // Count braces to detect potential issues
+        const leftBraces = (xmlContent.match(/\{/g) || []).length;
+        const rightBraces = (xmlContent.match(/\}/g) || []).length;
+        
+        if (leftBraces !== rightBraces) {
+          issues.push(`Jumlah kurung kurawal tidak seimbang: ${leftBraces} kiri, ${rightBraces} kanan`);
+        }
+        
+        // Look for duplicate braces that might cause problems
+        const doubleBracesLeft = (xmlContent.match(/\{\{/g) || []).length;
+        const doubleBracesRight = (xmlContent.match(/\}\}/g) || []).length;
+        
+        if (doubleBracesLeft > 0 || doubleBracesRight > 0) {
+          issues.push("Terdapat kurung kurawal ganda yang dapat menyebabkan kesalahan");
+        }
+      }
+    } catch (e) {
+      console.error('Error checking template XML:', e);
+      issues.push("Gagal memeriksa struktur tag template");
+    }
+    
     return { valid: issues.length === 0, issues };
   } catch (error) {
     issues.push("Gagal memvalidasi template");
@@ -205,8 +234,11 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       }
     }
     
+    // Clean up any formatting issues in the template
+    const sanitizedTemplateContent = sanitizeTemplateContent(templateContent);
+    
     // Validate the template before processing
-    const validation = validateGoogleDocsTemplate(templateContent);
+    const validation = validateGoogleDocsTemplate(sanitizedTemplateContent);
     if (!validation.valid) {
       toast({
         title: "Template tidak valid",
@@ -223,7 +255,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     console.log('program_pembebanan, kegiatan, rincian_output, komponen_output, nama, volume, satuan, harga_satuan, subtotal');
     
     // Prepare data to exactly match template fields from the screenshot
-    // IMPORTANT: Keys must match exactly what's in the template - using underscore notation as shown in screenshot
+    // IMPORTANT: Using single-braced template tag format for Google Docs: {tag_name}
     const data = {
       // Basic KAK information - using exact template tag names from screenshot
       program_pembebanan: kak.programPembebanan || '',
@@ -254,8 +286,8 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
         nama: item.nama || '',
         volume: item.volume || 0,
         satuan: item.satuan || '',
-        harga_satuan: formatCurrency(item.hargaSatuan || 0), // Match tag in screenshot: {{harga_satuan}}
-        subtotal: formatCurrency(item.subtotal || 0)  // Match tag in screenshot: {{subtotal}}
+        harga_satuan: formatCurrency(item.hargaSatuan || 0), // Match tag in screenshot: {harga_satuan}
+        subtotal: formatCurrency(item.subtotal || 0)  // Match tag in screenshot: {subtotal}
       })) : [],
       total: formatCurrency(totalAmount || 0),
       totalTerbilang: numberToWords(totalAmount || 0)
@@ -265,9 +297,9 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     console.log('Item fields for table:', Object.keys(data.items[0] || {}));
     
     try {
-      console.log('Template content size:', templateContent.byteLength, 'bytes');
+      console.log('Template content size:', sanitizedTemplateContent.byteLength, 'bytes');
       
-      const zip = new PizZip(templateContent);
+      const zip = new PizZip(sanitizedTemplateContent);
       
       // List all files in the zip to debug
       const zipFiles = Object.keys(zip.files);
@@ -277,6 +309,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
+        delimiters: { start: '{', end: '}' } // Use single braces for Google Docs compatibility
       });
       
       try {
@@ -358,7 +391,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
                 errorMessage += `\n- Tag duplikat: ${duplicateTags.join(', ')}`;
               }
               
-              errorMessage += "\n\nPastikan semua tag menggunakan format {{nama}} dengan tepat tanpa spasi atau karakter tambahan di antara kurung kurawal.";
+              errorMessage += "\n\nPastikan semua tag menggunakan format {nama} dengan tepat tanpa spasi atau karakter tambahan di antara kurung kurawal.";
             }
           }
         }
