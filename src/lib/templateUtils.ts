@@ -118,6 +118,7 @@ async function fetchTemplateFromUrl(url: string): Promise<ArrayBuffer | null> {
       }
     }
     
+    console.log('Fetching template from URL:', fetchUrl);
     const response = await fetch(fetchUrl);
     
     if (!response.ok) {
@@ -138,10 +139,12 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     
     // First try to use the Google Docs URL provided
     const googleDocsUrl = "https://docs.google.com/document/d/17AHhACqveyB7N_6GJ0ZLoUdso4w3JziePDCRr-Xhpdo/edit?usp=sharing";
+    console.log('Attempting to fetch from primary Google Docs URL:', googleDocsUrl);
     templateContent = await fetchTemplateFromUrl(googleDocsUrl);
     
     // If Google Docs template fails, try the Supabase template
     if (!templateContent && templatePath) {
+      console.log('Primary Google Docs template failed, trying Supabase template:', templatePath);
       // Make sure the templates bucket exists
       const bucketExists = await ensureTemplateBucketExists();
       if (!bucketExists) {
@@ -162,6 +165,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     // If both options fail, fallback to the secondary Google Docs URL
     if (!templateContent) {
       const fallbackUrl = "https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing&ouid=103425813951174435708&rtpof=true&sd=true";
+      console.log('Both primary Google Docs and Supabase templates failed, trying fallback URL:', fallbackUrl);
       templateContent = await fetchTemplateFromUrl(fallbackUrl);
       
       if (!templateContent) {
@@ -179,46 +183,60 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     // Prepare data to match template fields with {{namakolom}} format
     const data = {
       // Basic KAK information
-      jenisKAK: kak.jenisKAK,
-      programPembebanan: kak.programPembebanan,
-      kegiatan: kak.kegiatan,
-      komponenOutput: kak.komponenOutput,
-      subKomponen: kak.subKomponen,
-      akunBelanja: kak.akunBelanja,
-      paguAnggaran: formatCurrency(kak.paguAnggaran),
-      paguAnggaranTerbilang: numberToWords(kak.paguAnggaran),
-      paguDigunakan: formatCurrency(kak.paguDigunakan || totalAmount),
-      paguDigunakanTerbilang: numberToWords(kak.paguDigunakan || totalAmount),
+      jenisKAK: kak.jenisKAK || '',
+      programPembebanan: kak.programPembebanan || '',
+      kegiatan: kak.kegiatan || '',
+      komponenOutput: kak.komponenOutput || '',
+      subKomponen: kak.subKomponen || '',
+      akunBelanja: kak.akunBelanja || '',
+      paguAnggaran: formatCurrency(kak.paguAnggaran || 0),
+      paguAnggaranTerbilang: numberToWords(kak.paguAnggaran || 0),
+      paguDigunakan: formatCurrency(kak.paguDigunakan || totalAmount || 0),
+      paguDigunakanTerbilang: numberToWords(kak.paguDigunakan || totalAmount || 0),
       
       // People information
-      createdByName: kak.createdBy.name,
-      createdByRole: kak.createdBy.role,
+      createdByName: kak.createdBy?.name || '',
+      createdByRole: kak.createdBy?.role || '',
       
       // Dates
-      tanggalPengajuan: formatDate(new Date(kak.tanggalPengajuan)),
-      tanggalMulai: formatDate(new Date(kak.tanggalMulai)),
-      tanggalAkhir: formatDate(new Date(kak.tanggalAkhir)),
+      tanggalPengajuan: kak.tanggalPengajuan ? formatDate(new Date(kak.tanggalPengajuan)) : '',
+      tanggalMulai: kak.tanggalMulai ? formatDate(new Date(kak.tanggalMulai)) : '',
+      tanggalAkhir: kak.tanggalAkhir ? formatDate(new Date(kak.tanggalAkhir)) : '',
       
       // Items and totals
-      items: kak.items.map((item: any, index: number) => ({
+      items: Array.isArray(kak.items) ? kak.items.map((item: any, index: number) => ({
         no: index + 1,
-        nama: item.nama,
-        volume: item.volume,
-        satuan: item.satuan,
-        hargaSatuan: formatCurrency(item.hargaSatuan),
-        subtotal: formatCurrency(item.subtotal)
-      })),
-      total: formatCurrency(totalAmount),
-      totalTerbilang: numberToWords(totalAmount)
+        nama: item.nama || '',
+        volume: item.volume || 0,
+        satuan: item.satuan || '',
+        hargaSatuan: formatCurrency(item.hargaSatuan || 0),
+        subtotal: formatCurrency(item.subtotal || 0)
+      })) : [],
+      total: formatCurrency(totalAmount || 0),
+      totalTerbilang: numberToWords(totalAmount || 0)
     };
 
     try {
-      console.log('Rendering template with data:', data);
+      console.log('Rendering template with data:', JSON.stringify(data, null, 2));
+      console.log('Template content size:', templateContent.byteLength, 'bytes');
+      
       const zip = new PizZip(templateContent);
       
+      // List all files in the zip to debug
+      const zipFiles = Object.keys(zip.files);
+      console.log('Files in template zip:', zipFiles);
+      
+      // Configure docxtemplater with error handling
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
+        errorHandler: function(error: any) {
+          console.error('Docxtemplater error:', error);
+          if (error.properties && error.properties.errors) {
+            console.error('Error details:', error.properties.errors);
+          }
+          return null; // Return null to re-throw the error
+        }
       });
       
       // Render the document with data
@@ -233,7 +251,9 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       
       // Use a more descriptive filename with date
       const currentDate = new Date().toISOString().slice(0, 10);
-      saveAs(out, `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${currentDate}.docx`);
+      const filename = `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${currentDate}.docx`;
+      console.log('Downloading file as:', filename);
+      saveAs(out, filename);
       
       toast({
         title: "Dokumen berhasil dibuat",
@@ -242,7 +262,15 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     } catch (error: any) {
       console.error('Error rendering template:', error);
       if (error.properties && error.properties.errors) {
-        console.error('Template error details:', error.properties.errors);
+        console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
+        
+        // Check for specific errors
+        if (error.properties.errors instanceof Array) {
+          const errorMessages = error.properties.errors
+            .map((e: any) => e.message || String(e))
+            .join(', ');
+          throw new Error(`Error dalam template: ${errorMessages}`);
+        }
       }
       throw new Error(`Gagal menghasilkan dokumen: ${error.message}`);
     }
@@ -304,5 +332,9 @@ function formatCurrency(amount: number): string {
 
 // Helper function to calculate total from items
 function calculateTotal(items: any[]): number {
-  return items.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+  if (!Array.isArray(items)) {
+    console.warn('Items is not an array:', items);
+    return 0;
+  }
+  return items.reduce((sum: number, item: any) => sum + (Number(item.subtotal) || 0), 0);
 }

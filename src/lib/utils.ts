@@ -29,6 +29,8 @@ export function generateWordDoc(
   outputFilename: string
 ): void {
   try {
+    console.log('Generating Word document with data:', JSON.stringify(data, null, 2));
+    
     // Load the docx file as binary content
     const zip = new PizZip(templateContent);
     
@@ -36,6 +38,13 @@ export function generateWordDoc(
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      errorHandler: function(error: any) {
+        console.error('Docxtemplater error in utils:', error);
+        if (error.properties && error.properties.errors) {
+          console.error('Error details in utils:', error.properties.errors);
+        }
+        throw error;
+      }
     });
     
     // Render the document with the provided data
@@ -50,8 +59,9 @@ export function generateWordDoc(
     
     // Save the output file
     saveAs(out, outputFilename);
+    console.log('Document generated and saved as:', outputFilename);
   } catch (error) {
-    console.error('Error generating Word document:', error);
+    console.error('Error generating Word document in utils:', error);
     throw error;
   }
 }

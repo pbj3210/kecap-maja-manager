@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useKAK } from "@/contexts/KAKContext";
@@ -217,12 +218,22 @@ const KAKList = () => {
         description: "Sedang menyiapkan dokumen KAK...",
       });
       
+      // Validate KAK data before processing
+      if (!kak || !kak.id) {
+        throw new Error("Data KAK tidak valid");
+      }
+      
+      if (!Array.isArray(kak.items) || kak.items.length === 0) {
+        console.warn("KAK doesn't have any items:", kak.id);
+        // Continue anyway, as the template might not require items
+      }
+      
       await generateDocFromTemplate(kak, defaultTemplatePath || undefined);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating document:", error);
       toast({
         title: "Gagal mengunduh dokumen",
-        description: "Terjadi kesalahan saat membuat file dokumen",
+        description: error.message || "Terjadi kesalahan saat membuat file dokumen",
         variant: "destructive",
       });
     }
