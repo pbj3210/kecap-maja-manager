@@ -103,125 +103,82 @@ function numberToWords(num: number): string {
   return `${numberToWords(Math.floor(num / 1000000000))} milyar ${numberToWords(num % 1000000000)}`;
 }
 
-// Function to get default template path
-async function getDefaultTemplatePath(): Promise<string | null> {
+// Fetch the template from Google Docs or other URL
+async function fetchTemplateFromUrl(url: string): Promise<ArrayBuffer | null> {
   try {
-    const { data: templateData, error: templateError } = await supabase
-      .from('templates')
-      .select('file_path')
-      .eq('is_default', true)
-      .single();
-      
-    if (templateError && templateError.code !== 'PGRST116') {
-      console.error('Error fetching default template:', templateError);
-      return null;
-    }
+    // Handle Google Docs URL - convert to export URL if needed
+    let fetchUrl = url;
     
-    if (templateData) {
-      return templateData.file_path;
-    }
-    
-    const { data: templates, error: templatesError } = await supabase
-      .from('templates')
-      .select('file_path')
-      .limit(1);
-      
-    if (templatesError) {
-      console.error('Error fetching templates:', templatesError);
-      return null;
-    }
-    
-    if (templates && templates.length > 0) {
-      return templates[0].file_path;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error getting default template path:', error);
-    return null;
-  }
-}
-
-// Function to check if a storage bucket exists and create it if it doesn't
-async function ensureTemplateBucketExists(): Promise<boolean> {
-  try {
-    // Check if the templates bucket exists
-    const { data: buckets, error } = await supabase
-      .storage
-      .listBuckets();
-    
-    if (error) {
-      console.error('Error listing buckets:', error);
-      return false;
-    }
-    
-    const templateBucketExists = buckets.some(bucket => bucket.name === 'templates');
-    
-    if (!templateBucketExists) {
-      // If the bucket doesn't exist, create it
-      const { error: createBucketError } = await supabase
-        .storage
-        .createBucket('templates', {
-          public: true
-        });
-      
-      if (createBucketError) {
-        console.error('Error creating templates bucket:', createBucketError);
-        return false;
+    if (url.includes('docs.google.com/document') && !url.includes('export=download')) {
+      // Extract document ID
+      const idMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (idMatch && idMatch[1]) {
+        const docId = idMatch[1];
+        fetchUrl = `https://docs.google.com/document/d/${docId}/export?format=docx`;
       }
     }
     
-    return true;
+    const response = await fetch(fetchUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch template: ${response.status} ${response.statusText}`);
+    }
+    
+    return await response.arrayBuffer();
   } catch (error) {
-    console.error('Error ensuring template bucket exists:', error);
-    return false;
+    console.error('Error fetching template from URL:', error);
+    return null;
   }
 }
 
 // Function to generate a document from template with KAK data
 export async function generateDocFromTemplate(kak: any, templatePath?: string): Promise<void> {
   try {
-    // Make sure the templates bucket exists
-    const bucketExists = await ensureTemplateBucketExists();
-    if (!bucketExists) {
-      toast({
-        title: "Tidak dapat mengakses storage",
-        description: "Mengalihkan ke template Google Docs",
-      });
-      window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
-      return;
+    let templateContent: ArrayBuffer | null = null;
+    
+    // First try to use the Google Docs URL provided
+    const googleDocsUrl = "https://docs.google.com/document/d/17AHhACqveyB7N_6GJ0ZLoUdso4w3JziePDCRr-Xhpdo/edit?usp=sharing";
+    templateContent = await fetchTemplateFromUrl(googleDocsUrl);
+    
+    // If Google Docs template fails, try the Supabase template
+    if (!templateContent && templatePath) {
+      // Make sure the templates bucket exists
+      const bucketExists = await ensureTemplateBucketExists();
+      if (!bucketExists) {
+        toast({
+          title: "Tidak dapat mengakses storage",
+          description: "Gagal menggunakan template dari Supabase",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const templateBlob = await downloadTemplate(templatePath);
+      if (templateBlob) {
+        templateContent = await templateBlob.arrayBuffer();
+      }
     }
     
-    let path = templatePath;
-    
-    if (!path) {
-      path = localStorage.getItem('defaultTemplatePath') || await getDefaultTemplatePath();
+    // If both options fail, fallback to the secondary Google Docs URL
+    if (!templateContent) {
+      const fallbackUrl = "https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing&ouid=103425813951174435708&rtpof=true&sd=true";
+      templateContent = await fetchTemplateFromUrl(fallbackUrl);
       
-      if (!path) {
+      if (!templateContent) {
         toast({
-          title: "Menggunakan template Google Docs",
-          description: "Template di Supabase tidak ditemukan, mengalihkan ke Google Docs",
+          title: "Gagal mengunduh template",
+          description: "Tidak dapat mengakses template dokumen",
+          variant: "destructive",
         });
-        window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
         return;
       }
     }
     
-    const templateBlob = await downloadTemplate(path);
-    if (!templateBlob) {
-      toast({
-        title: "Template tidak dapat diunduh",
-        description: "Mengalihkan ke template Google Docs",
-      });
-      window.open("https://docs.google.com/document/d/1l6UqGaR9xq4eMGFV9mv-J2eAQRsTiyQF/edit?usp=sharing", "_blank");
-      return;
-    }
-    
-    const templateContent = await templateBlob.arrayBuffer();
-    
     const totalAmount = calculateTotal(kak.items);
     
+    // Prepare data to match template fields with {{namakolom}} format
     const data = {
+      // Basic KAK information
       jenisKAK: kak.jenisKAK,
       programPembebanan: kak.programPembebanan,
       kegiatan: kak.kegiatan,
@@ -232,11 +189,17 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       paguAnggaranTerbilang: numberToWords(kak.paguAnggaran),
       paguDigunakan: formatCurrency(kak.paguDigunakan || totalAmount),
       paguDigunakanTerbilang: numberToWords(kak.paguDigunakan || totalAmount),
+      
+      // People information
       createdByName: kak.createdBy.name,
       createdByRole: kak.createdBy.role,
+      
+      // Dates
       tanggalPengajuan: formatDate(new Date(kak.tanggalPengajuan)),
       tanggalMulai: formatDate(new Date(kak.tanggalMulai)),
       tanggalAkhir: formatDate(new Date(kak.tanggalAkhir)),
+      
+      // Items and totals
       items: kak.items.map((item: any, index: number) => ({
         no: index + 1,
         nama: item.nama,
@@ -290,6 +253,42 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       description: error instanceof Error ? error.message : "Terjadi kesalahan saat membuat dokumen",
       variant: "destructive",
     });
+  }
+}
+
+// Function to check if a storage bucket exists and create it if it doesn't
+async function ensureTemplateBucketExists(): Promise<boolean> {
+  try {
+    // Check if the templates bucket exists
+    const { data: buckets, error } = await supabase
+      .storage
+      .listBuckets();
+    
+    if (error) {
+      console.error('Error listing buckets:', error);
+      return false;
+    }
+    
+    const templateBucketExists = buckets.some(bucket => bucket.name === 'templates');
+    
+    if (!templateBucketExists) {
+      // If the bucket doesn't exist, create it
+      const { error: createBucketError } = await supabase
+        .storage
+        .createBucket('templates', {
+          public: true
+        });
+      
+      if (createBucketError) {
+        console.error('Error creating templates bucket:', createBucketError);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error ensuring template bucket exists:', error);
+    return false;
   }
 }
 

@@ -42,7 +42,6 @@ import { generateDocFromTemplate } from "@/lib/templateUtils";
 import { formatDate } from '@/lib/utils';
 import { supabase } from "@/integrations/supabase/client";
 
-// Format currency
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
