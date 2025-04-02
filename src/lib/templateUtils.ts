@@ -225,7 +225,7 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       const zipFiles = Object.keys(zip.files);
       console.log('Files in template zip:', zipFiles);
       
-      // Configure docxtemplater with better error handling
+      // Configure docxtemplater with explicit error handling for Google Docs
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
@@ -255,37 +255,51 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       } catch (error: any) {
         console.error('Error rendering template:', error);
         
-        let errorMessage = "Terjadi kesalahan dalam template dokumen.";
-        
+        // Improved debugging for Google Docs template errors
         if (error.properties && error.properties.errors) {
           console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
           
-          // Check if there are specific template tag issues
-          if (Array.isArray(error.properties.errors)) {
-            // Look for duplicate tag errors
-            const duplicateErrors = error.properties.errors.filter((e: any) => 
-              e.properties && (e.properties.id === 'duplicate_open_tag' || e.properties.id === 'duplicate_close_tag')
+          // Check for malformed or incomplete tags
+          let errorMessage = "Terjadi kesalahan format pada template Google Docs.";
+          const errors = error.properties.errors;
+          
+          if (Array.isArray(errors)) {
+            // Common Google Docs template issues
+            const tagErrors = errors.filter((e: any) => 
+              e.properties && (
+                e.properties.id === 'unopened_tag' || 
+                e.properties.id === 'unclosed_tag' ||
+                e.properties.id === 'duplicate_open_tag' ||
+                e.properties.id === 'duplicate_close_tag'
+              )
             );
             
-            if (duplicateErrors.length > 0) {
-              errorMessage = "Template memiliki kesalahan format tag. Silakan perbaiki format tag {{ dan }} dalam template.";
+            if (tagErrors.length > 0) {
+              const problemTags = tagErrors
+                .filter((e: any) => e.properties && e.properties.xtag)
+                .map((e: any) => e.properties.xtag)
+                .join(', ');
               
-              // Add specific tag information if available
-              const problemTags = duplicateErrors.map((e: any) => e.properties.xtag).join(', ');
+              errorMessage = "Template Google Docs memiliki tag yang tidak sesuai format. ";
+              
               if (problemTags) {
-                errorMessage += ` Tag bermasalah: ${problemTags}`;
+                errorMessage += `Tag bermasalah: ${problemTags}. `;
               }
+              
+              errorMessage += "Pastikan semua tag menggunakan format {{nama}} dengan tepat tanpa spasi atau karakter tambahan di antara kurung kurawal.";
             }
           }
+          
+          toast({
+            title: "Format template Google Docs tidak valid",
+            description: errorMessage,
+            variant: "destructive",
+          });
+          
+          throw new Error(errorMessage);
+        } else {
+          throw new Error("Terjadi kesalahan saat memproses template Google Docs");
         }
-        
-        toast({
-          title: "Format template tidak valid",
-          description: errorMessage,
-          variant: "destructive",
-        });
-        
-        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error('Error generating document from template:', error);

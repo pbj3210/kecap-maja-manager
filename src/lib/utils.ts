@@ -40,7 +40,7 @@ export function generateWordDoc(
       linebreaks: true,
     });
     
-    // Add error handler using try-catch instead of constructor option
+    // Add error handling using try-catch
     try {
       // Render the document with the provided data
       doc.render(data);
