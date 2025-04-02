@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { saveAs } from 'file-saver';
 import { toast } from "@/hooks/use-toast";
@@ -159,7 +158,9 @@ function validateGoogleDocsTemplate(templateContent: ArrayBuffer): { valid: bool
   }
 }
 
-// Function to generate a document from template with KAK data
+/**
+ * Generate a document from template with KAK data
+ */
 export async function generateDocFromTemplate(kak: any, templatePath?: string): Promise<void> {
   try {
     let templateContent: ArrayBuffer | null = null;
@@ -217,15 +218,22 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
     
     const totalAmount = calculateTotal(kak.items);
     
-    // Prepare data to match template fields with {{namakolom}} format
+    // Create a log of the template data structure
+    console.log('Template data structure based on screenshot:');
+    console.log('program_pembebanan, kegiatan, rincian_output, komponen_output, nama, volume, satuan, harga_satuan, subtotal');
+    
+    // Prepare data to exactly match template fields from the screenshot
+    // IMPORTANT: Keys must match exactly what's in the template - using underscore notation as shown in screenshot
     const data = {
-      // Basic KAK information
-      jenisKAK: kak.jenisKAK || '',
-      programPembebanan: kak.programPembebanan || '',
+      // Basic KAK information - using exact template tag names from screenshot
+      program_pembebanan: kak.programPembebanan || '',
       kegiatan: kak.kegiatan || '',
-      komponenOutput: kak.komponenOutput || '',
+      rincian_output: kak.rincianOutput || '',
+      komponen_output: kak.komponenOutput || '',
       subKomponen: kak.subKomponen || '',
       akunBelanja: kak.akunBelanja || '',
+      
+      // Financial information
       paguAnggaran: formatCurrency(kak.paguAnggaran || 0),
       paguAnggaranTerbilang: numberToWords(kak.paguAnggaran || 0),
       paguDigunakan: formatCurrency(kak.paguDigunakan || totalAmount || 0),
@@ -240,21 +248,23 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       tanggalMulai: kak.tanggalMulai ? formatDate(new Date(kak.tanggalMulai)) : '',
       tanggalAkhir: kak.tanggalAkhir ? formatDate(new Date(kak.tanggalAkhir)) : '',
       
-      // Items and totals
+      // Items for table rows - match screenshot showing nama, volume, satuan, harga_satuan, subtotal
       items: Array.isArray(kak.items) ? kak.items.map((item: any, index: number) => ({
         no: index + 1,
         nama: item.nama || '',
         volume: item.volume || 0,
         satuan: item.satuan || '',
-        hargaSatuan: formatCurrency(item.hargaSatuan || 0),
-        subtotal: formatCurrency(item.subtotal || 0)
+        harga_satuan: formatCurrency(item.hargaSatuan || 0), // Match tag in screenshot: {{harga_satuan}}
+        subtotal: formatCurrency(item.subtotal || 0)  // Match tag in screenshot: {{subtotal}}
       })) : [],
       total: formatCurrency(totalAmount || 0),
       totalTerbilang: numberToWords(totalAmount || 0)
     };
 
+    console.log('Rendering template with data keys:', Object.keys(data));
+    console.log('Item fields for table:', Object.keys(data.items[0] || {}));
+    
     try {
-      console.log('Rendering template with data:', JSON.stringify(data, null, 2));
       console.log('Template content size:', templateContent.byteLength, 'bytes');
       
       const zip = new PizZip(templateContent);
