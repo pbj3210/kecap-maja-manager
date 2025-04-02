@@ -226,53 +226,55 @@ export async function generateDocFromTemplate(kak: any, templatePath?: string): 
       const zipFiles = Object.keys(zip.files);
       console.log('Files in template zip:', zipFiles);
       
-      // Configure docxtemplater with error handling
+      // Configure docxtemplater without errorHandler
       const doc = new Docxtemplater(zip, {
         paragraphLoop: true,
         linebreaks: true,
-        errorHandler: function(error: any) {
-          console.error('Docxtemplater error:', error);
-          if (error.properties && error.properties.errors) {
-            console.error('Error details:', error.properties.errors);
-          }
-          return null; // Return null to re-throw the error
-        }
       });
       
-      // Render the document with data
-      doc.render(data);
-      
-      // Generate and download the document
-      const out = doc.getZip().generate({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        compression: 'DEFLATE',
-      });
-      
-      // Use a more descriptive filename with date
-      const currentDate = new Date().toISOString().slice(0, 10);
-      const filename = `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${currentDate}.docx`;
-      console.log('Downloading file as:', filename);
-      saveAs(out, filename);
-      
-      toast({
-        title: "Dokumen berhasil dibuat",
-        description: "Dokumen KAK berhasil diunduh dengan data yang telah diisi.",
-      });
-    } catch (error: any) {
-      console.error('Error rendering template:', error);
-      if (error.properties && error.properties.errors) {
-        console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
+      try {
+        // Render the document with data
+        doc.render(data);
         
-        // Check for specific errors
-        if (error.properties.errors instanceof Array) {
-          const errorMessages = error.properties.errors
-            .map((e: any) => e.message || String(e))
-            .join(', ');
-          throw new Error(`Error dalam template: ${errorMessages}`);
+        // Generate and download the document
+        const out = doc.getZip().generate({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          compression: 'DEFLATE',
+        });
+        
+        // Use a more descriptive filename with date
+        const currentDate = new Date().toISOString().slice(0, 10);
+        const filename = `KAK_${kak.jenisKAK.replace(/\s+/g, '_')}_${currentDate}.docx`;
+        console.log('Downloading file as:', filename);
+        saveAs(out, filename);
+        
+        toast({
+          title: "Dokumen berhasil dibuat",
+          description: "Dokumen KAK berhasil diunduh dengan data yang telah diisi.",
+        });
+      } catch (error: any) {
+        console.error('Error rendering template:', error);
+        if (error.properties && error.properties.errors) {
+          console.error('Template error details:', JSON.stringify(error.properties.errors, null, 2));
+          
+          // Check for specific errors
+          if (error.properties.errors instanceof Array) {
+            const errorMessages = error.properties.errors
+              .map((e: any) => e.message || String(e))
+              .join(', ');
+            throw new Error(`Error dalam template: ${errorMessages}`);
+          }
         }
+        throw new Error(`Gagal menghasilkan dokumen: ${error.message}`);
       }
-      throw new Error(`Gagal menghasilkan dokumen: ${error.message}`);
+    } catch (error) {
+      console.error('Error generating document from template:', error);
+      toast({
+        title: "Gagal membuat dokumen",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan saat membuat dokumen",
+        variant: "destructive",
+      });
     }
   } catch (error) {
     console.error('Error generating document from template:', error);

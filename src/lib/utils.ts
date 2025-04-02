@@ -38,28 +38,30 @@ export function generateWordDoc(
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
-      errorHandler: function(error: any) {
-        console.error('Docxtemplater error in utils:', error);
-        if (error.properties && error.properties.errors) {
-          console.error('Error details in utils:', error.properties.errors);
-        }
-        throw error;
+    });
+    
+    // Add error handler using try-catch instead of constructor option
+    try {
+      // Render the document with the provided data
+      doc.render(data);
+      
+      // Generate the output as a blob
+      const out = doc.getZip().generate({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        compression: 'DEFLATE',
+      });
+      
+      // Save the output file
+      saveAs(out, outputFilename);
+      console.log('Document generated and saved as:', outputFilename);
+    } catch (error: any) {
+      console.error('Docxtemplater error in utils:', error);
+      if (error.properties && error.properties.errors) {
+        console.error('Error details in utils:', error.properties.errors);
       }
-    });
-    
-    // Render the document with the provided data
-    doc.render(data);
-    
-    // Generate the output as a blob
-    const out = doc.getZip().generate({
-      type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      compression: 'DEFLATE',
-    });
-    
-    // Save the output file
-    saveAs(out, outputFilename);
-    console.log('Document generated and saved as:', outputFilename);
+      throw error;
+    }
   } catch (error) {
     console.error('Error generating Word document in utils:', error);
     throw error;
